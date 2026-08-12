@@ -1,0 +1,15 @@
+# Render 一鍵部署藍圖
+# 用法:登入 https://render.com → New → Blueprint → 選這個 repo,按 Apply 即可。
+services:
+  - type: web
+    name: spell-typing-duel
+    runtime: node
+    plan: free
+    region: singapore        # 亞洲節點,延遲較低;可改 oregon / frankfurt 等
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    autoDeploy: true          # push 到 GitHub 後自動重新部署
+    envVars:
+      - key: NODE_VERSION
+        value: "20"

@@ -33,13 +33,20 @@ npm start
 
 ## 部署到雲端(推 GitHub → Render 免費方案)
 
-1. 把整個資料夾推上 GitHub。
-2. 到 [render.com](https://render.com) → New → **Web Service** → 連結這個 repo。
-3. 設定:
+### 最快:一鍵藍圖(本專案已含 `render.yaml`)
+
+1. 登入 [render.com](https://render.com)(用 GitHub 帳號登入最快)。
+2. New → **Blueprint** → 選這個 repo → **Apply**。
+3. Render 會依 `render.yaml` 自動建立服務,完成後給你網址(例如 `https://spell-typing-duel.onrender.com`),分享給朋友即可對戰。
+
+### 或手動設定
+
+1. 到 [render.com](https://render.com) → New → **Web Service** → 連結這個 repo。
+2. 設定:
    - Environment: **Node**
    - Build Command: `npm install`
    - Start Command: `npm start`
-4. 部署完成後會給你一個網址(例如 `https://xxx.onrender.com`),把它分享給朋友就能對戰。
+3. 部署完成後會給你一個網址,把它分享給朋友就能對戰。
 
 > 伺服器已用 `process.env.PORT`,Render / Railway / Fly.io 等平台都能直接跑。
 > 免費方案閒置會休眠,第一次連線可能要等十幾秒喚醒,屬正常現象。
