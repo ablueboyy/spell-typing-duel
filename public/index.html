@@ -3,119 +3,180 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>咒語對決 · 線上對戰</title>
+<title>咒語對決 · 霓虹對戰</title>
 <style>
   :root {
-    --bg:#0b0a1a; --panel:#15132b; --panel-2:#1d1a3a; --ink:#e9e6ff; --muted:#9a94c8;
-    --gold:#ffd166; --you:#5ee6a8; --foe:#ff6b8b; --good:#6bff9e; --bad:#ff5c72; --dim:#4b4570;
-    --shield:#6cc6ff; --heal:#7CFF9B; --reflect:#c792ff;
+    --bg:#070311; --ink:#eafcff; --muted:#8aa0d8;
+    --cyan:#21e6ff; --magenta:#ff2fb9; --purple:#b14bff; --green:#39ff9e; --gold:#ffe066; --orange:#ffa94d; --ice:#9fe8ff; --bad:#ff2e63;
+    --dim:#3a3560;
   }
-  * { box-sizing: border-box; }
+  * { box-sizing:border-box; }
   html, body { height:100%; margin:0; }
   body {
-    background: radial-gradient(1200px 600px at 50% -10%, #241f4d 0%, var(--bg) 60%);
-    color: var(--ink); font-family:"Segoe UI", system-ui, -apple-system, "Microsoft JhengHei", sans-serif;
-    display:flex; flex-direction:column; align-items:center; min-height:100%; padding:18px;
-    -webkit-user-select:none; user-select:none;
+    background:#070311; color:var(--ink);
+    font-family:"Segoe UI", system-ui, -apple-system, "Microsoft JhengHei", sans-serif;
+    display:flex; flex-direction:column; align-items:center; min-height:100%; padding:16px 14px 28px;
+    -webkit-user-select:none; user-select:none; overflow-x:hidden;
   }
-  h1 { font-size:22px; letter-spacing:4px; margin:4px 0 2px; font-weight:700; text-shadow:0 0 18px rgba(255,209,102,.35); }
-  .sub { color:var(--muted); font-size:12px; letter-spacing:1px; margin-bottom:14px; }
-  a { color: var(--gold); }
+  h1 { font-size:26px; letter-spacing:8px; margin:2px 0; font-weight:800;
+    color:#fff; text-shadow:0 0 8px var(--cyan),0 0 22px var(--cyan),0 0 40px var(--magenta); }
+  .sub { color:var(--muted); font-size:12px; letter-spacing:2px; margin-bottom:12px; }
+  a { color:var(--cyan); text-decoration:none; text-shadow:0 0 8px var(--cyan); }
 
-  .arena { width:min(920px,100%); display:grid; grid-template-columns:1fr 1fr; gap:16px; }
-  .wizard { background:linear-gradient(180deg,var(--panel-2),var(--panel)); border:1px solid #2b2752; border-radius:16px; padding:16px; position:relative; overflow:hidden; }
-  .wizard.you { box-shadow:0 0 0 1px rgba(94,230,168,.15),0 10px 40px rgba(0,0,0,.4); }
-  .wizard.foe { box-shadow:0 0 0 1px rgba(255,107,139,.15),0 10px 40px rgba(0,0,0,.4); }
-  .wtop { display:flex; align-items:center; justify-content:space-between; }
-  .name { font-weight:700; letter-spacing:2px; } .you .name{color:var(--you)} .foe .name{color:var(--foe)}
-  .avatar { font-size:46px; text-align:center; margin:6px 0 10px; filter:drop-shadow(0 6px 16px rgba(0,0,0,.5)); transition:transform .08s ease; }
-  .avatar.hit { animation:shake .3s; }
-  @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-8px)} 40%{transform:translateX(7px)} 60%{transform:translateX(-5px)} 80%{transform:translateX(4px)} }
-  .hpbar { height:16px; background:#0d0b1f; border-radius:10px; overflow:hidden; border:1px solid #2b2752; position:relative; }
+  .arena {
+    position:relative; width:min(940px,100%); aspect-ratio:16/9; min-height:320px;
+    border-radius:16px; overflow:hidden; border:1px solid #2a2150;
+    background:linear-gradient(180deg,#12042e 0%,#2a0740 42%,#54094f 52%,#12042e 53%,#070311 100%);
+    box-shadow:0 0 0 1px rgba(177,75,255,.25), 0 20px 60px rgba(0,0,0,.6), inset 0 0 80px rgba(177,75,255,.15);
+  }
+  .sun { position:absolute; left:50%; top:34%; width:180px; height:180px; transform:translate(-50%,-50%);
+    border-radius:50%; background:linear-gradient(180deg,var(--gold),var(--magenta) 55%,var(--purple));
+    filter:blur(1px); box-shadow:0 0 60px rgba(255,47,185,.5); z-index:0; }
+  .sun::after { content:""; position:absolute; inset:0; border-radius:50%;
+    background:repeating-linear-gradient(180deg, transparent 0 10px, #12042e 10px 16px); mask:linear-gradient(180deg,transparent 45%,#000 46%); }
+  .grid { position:absolute; left:-50%; right:-50%; bottom:0; height:52%; z-index:0;
+    background-image:linear-gradient(var(--purple) 1.5px, transparent 1.5px), linear-gradient(90deg, var(--cyan) 1.5px, transparent 1.5px);
+    background-size:44px 44px; transform:perspective(340px) rotateX(62deg); transform-origin:bottom center;
+    opacity:.5; animation:gridmove 3.2s linear infinite; }
+  @keyframes gridmove { from{background-position:0 0} to{background-position:0 44px} }
+  .horizon { position:absolute; left:0; right:0; top:52%; height:2px; background:var(--cyan); z-index:1; box-shadow:0 0 14px var(--cyan),0 0 30px var(--cyan); }
+  .scan { position:absolute; inset:0; z-index:3; pointer-events:none; opacity:.10; background:repeating-linear-gradient(0deg, #fff 0 1px, transparent 1px 3px); mix-blend-mode:overlay; }
+  #fx { position:absolute; inset:0; z-index:4; pointer-events:none; }
+
+  .fighter { position:absolute; z-index:2; width:210px; max-width:44%; }
+  .fighter.foe { top:5%; right:4%; text-align:right; }
+  .fighter.you { bottom:6%; left:4%; text-align:left; }
+  .sprite-wrap { position:relative; height:96px; }
+  .fighter.foe .sprite-wrap { margin-left:auto; }
+  .sprite { position:absolute; bottom:0; font-size:60px; line-height:1; filter:drop-shadow(0 0 10px rgba(33,230,255,.7)); animation:float 3s ease-in-out infinite; }
+  .fighter.foe .sprite { right:30px; filter:drop-shadow(0 0 10px rgba(255,47,185,.7)); animation:floatF 3s ease-in-out infinite; }
+  .fighter.you .sprite { left:30px; }
+  @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-7px)} }
+  @keyframes floatF { 0%,100%{transform:scaleX(-1) translateY(0)} 50%{transform:scaleX(-1) translateY(-7px)} }
+  .sprite.hit { animation:hitflash .3s !important; }
+  @keyframes hitflash { 0%,100%{filter:drop-shadow(0 0 10px #fff)} 50%{filter:brightness(3) drop-shadow(0 0 20px var(--bad))} }
+  .circle { position:absolute; bottom:-6px; width:86px; height:34px; border-radius:50%; left:30px; transform:translateX(-50%); opacity:0; transition:opacity .2s;
+    border:2px solid var(--c,#21e6ff); box-shadow:0 0 18px var(--c,#21e6ff), inset 0 0 14px var(--c,#21e6ff); }
+  .fighter.foe .circle { left:auto; right:30px; transform:translateX(50%); }
+  .circle.active { opacity:.95; animation:spin 1.1s linear infinite; }
+  .circle.active::before { content:""; position:absolute; inset:5px; border-radius:50%; border:1px dashed var(--c,#21e6ff); opacity:.7; }
+  @keyframes spin { from{transform:translateX(-50%) rotate(0)} to{transform:translateX(-50%) rotate(360deg)} }
+
+  .hud { background:rgba(10,4,24,.72); border:1px solid #2a2150; border-radius:10px; padding:8px 10px; backdrop-filter:blur(3px); font-size:12px; }
+  .fighter.you .hud { box-shadow:0 0 16px rgba(33,230,255,.25); }
+  .fighter.foe .hud { box-shadow:0 0 16px rgba(255,47,185,.25); }
+  .hud .nm { font-weight:800; letter-spacing:2px; }
+  .you .nm { color:var(--cyan); text-shadow:0 0 10px var(--cyan); }
+  .foe .nm { color:var(--magenta); text-shadow:0 0 10px var(--magenta); }
+  .hpbar { height:12px; margin-top:5px; background:#0c0720; border-radius:7px; overflow:hidden; border:1px solid #2a2150; position:relative; }
   .hpfill { height:100%; width:100%; transition:width .35s ease; }
-  .you .hpfill{background:linear-gradient(90deg,#2fae74,var(--you))} .foe .hpfill{background:linear-gradient(90deg,#b83a53,var(--foe))}
-  .shieldfill { position:absolute; top:0; left:0; height:100%; width:0%; transition:width .3s;
-    background:repeating-linear-gradient(45deg,rgba(108,198,255,.55),rgba(108,198,255,.55) 6px,rgba(108,198,255,.3) 6px,rgba(108,198,255,.3) 12px); }
-  .hptext { font-size:12px; color:var(--muted); margin-top:4px; text-align:right; }
-  .status { font-size:12px; margin-top:4px; min-height:16px; letter-spacing:1px; }
-  .tag { margin-right:8px; } .tag.sh{color:var(--shield)} .tag.rf{color:var(--reflect)}
-  .castrow { margin-top:12px; min-height:40px; }
-  .charge { height:8px; background:#0d0b1f; border-radius:6px; overflow:hidden; border:1px solid #2b2752; margin-top:6px; }
-  .chargefill { height:100%; width:0%; background:linear-gradient(90deg,#ffb703,var(--gold)); transition:width .12s linear; }
-  .castlabel { font-size:13px; color:var(--muted); min-height:18px; } .castlabel b{color:var(--gold); letter-spacing:1px;}
+  .you .hpfill { background:linear-gradient(90deg,#0e8f9e,var(--cyan)); box-shadow:0 0 12px var(--cyan); }
+  .foe .hpfill { background:linear-gradient(90deg,#a01a7a,var(--magenta)); box-shadow:0 0 12px var(--magenta); }
+  .shieldfill { position:absolute; top:0; left:0; height:100%; width:0%; transition:width .3s; background:repeating-linear-gradient(45deg,rgba(33,230,255,.6),rgba(33,230,255,.6) 5px,rgba(33,230,255,.28) 5px,rgba(33,230,255,.28) 10px); }
+  .hptext { color:var(--muted); font-size:11px; margin-top:2px; }
+  .status { min-height:15px; font-size:11px; margin-top:2px; letter-spacing:1px; }
+  .tag.sh{color:var(--cyan)} .tag.rf{color:var(--purple)}
+  .castlabel { font-size:11px; color:var(--muted); min-height:14px; margin-top:4px; } .castlabel b{color:var(--gold)}
+  .charge { height:5px; margin-top:3px; background:#0c0720; border-radius:4px; overflow:hidden; border:1px solid #2a2150; }
+  .chargefill { height:100%; width:0%; background:linear-gradient(90deg,var(--gold),var(--magenta)); box-shadow:0 0 10px var(--gold); transition:width .12s linear; }
+  .connpill { font-size:11px; color:var(--muted); margin-bottom:4px; }
 
-  .console { width:min(920px,100%); margin-top:16px; background:linear-gradient(180deg,#17143180,#12102a); border:1px solid #2b2752; border-radius:16px; padding:18px; text-align:center; }
-  .state { font-size:12px; letter-spacing:3px; color:var(--muted); text-transform:uppercase; margin-bottom:8px; }
-  .incant { font-size:30px; font-weight:700; letter-spacing:2px; min-height:42px; display:flex; gap:14px; justify-content:center; flex-wrap:wrap; align-items:center; }
-  .word { color:var(--dim); transition:color .15s; }
-  .word.done { color:var(--good); text-shadow:0 0 12px rgba(107,255,158,.4); }
-  .word.active .g{color:var(--good)} .word.active .r{color:var(--ink)} .word.active.err{text-shadow:0 0 12px rgba(255,92,114,.5)}
+  .console { width:min(940px,100%); margin-top:14px; background:linear-gradient(180deg,rgba(20,6,44,.7),rgba(7,3,17,.8)); border:1px solid #2a2150; border-radius:14px; padding:16px; text-align:center; box-shadow:0 0 0 1px rgba(33,230,255,.12), inset 0 0 40px rgba(33,230,255,.06); }
+  .state { font-size:12px; letter-spacing:3px; color:var(--muted); text-transform:uppercase; margin-bottom:8px; min-height:16px; }
+  .incant { font-size:30px; font-weight:800; letter-spacing:2px; min-height:42px; display:flex; gap:16px; justify-content:center; flex-wrap:wrap; align-items:center; }
+  .incant.glitch { animation:glitch .18s steps(2) infinite; }
+  @keyframes glitch { 0%{transform:translate(0)} 25%{transform:translate(-2px,1px)} 50%{transform:translate(2px,-1px)} 75%{transform:translate(-1px,-2px)} 100%{transform:translate(1px,2px)} }
+  .word { color:var(--dim); }
+  .word.done { color:var(--green); text-shadow:0 0 12px var(--green); }
+  .word.active .g{color:var(--cyan); text-shadow:0 0 12px var(--cyan)} .word.active .r{color:var(--ink)}
+  .word.active.err .r{color:var(--bad)}
   .word.active .cursor { border-left:2px solid var(--gold); animation:blink 1s steps(1) infinite; }
   @keyframes blink { 50%{opacity:0} }
-  .hint { color:var(--muted); font-size:13px; min-height:18px; margin-top:6px; }
-  input#type { margin-top:14px; width:100%; max-width:520px; padding:14px 16px; font-size:20px; letter-spacing:2px; text-align:center; background:#0d0b1f; border:2px solid #33305e; border-radius:12px; color:var(--ink); outline:none; caret-color:var(--gold); transition:border-color .15s,box-shadow .15s; }
-  input#type:focus { border-color:var(--gold); box-shadow:0 0 0 4px rgba(255,209,102,.12); }
-  input#type.err { border-color:var(--bad); box-shadow:0 0 0 4px rgba(255,92,114,.15); }
+  .hint { color:var(--muted); font-size:12px; min-height:16px; margin-top:6px; }
+  input#type { margin-top:12px; width:100%; max-width:520px; padding:13px 16px; font-size:20px; letter-spacing:3px; text-align:center; background:#0a0420; border:2px solid #33305e; border-radius:12px; color:var(--ink); outline:none; caret-color:var(--cyan); transition:.15s; }
+  input#type:focus { border-color:var(--cyan); box-shadow:0 0 0 4px rgba(33,230,255,.14),0 0 22px rgba(33,230,255,.25); }
+  input#type.err { border-color:var(--bad); box-shadow:0 0 0 4px rgba(255,46,99,.18); }
+  input#type:disabled { opacity:.6; }
 
-  .spellbook { width:min(920px,100%); margin-top:16px; display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
-  .card { background:var(--panel); border:1px solid #2b2752; border-radius:12px; padding:10px 12px; font-size:13px; }
-  .card .sname{font-weight:700; letter-spacing:1px; font-size:15px;} .card .meta{color:var(--muted); margin-top:2px;}
-  .card .kind{float:right; font-size:11px; padding:1px 7px; border-radius:8px;}
-  .k-attack .sname{color:var(--gold)} .k-attack .kind{background:rgba(255,209,102,.15);color:var(--gold)}
-  .k-shield .sname{color:var(--shield)} .k-shield .kind{background:rgba(108,198,255,.15);color:var(--shield)}
-  .k-heal .sname{color:var(--heal)} .k-heal .kind{background:rgba(124,255,155,.12);color:var(--heal)}
-  .k-interrupt .sname{color:#ffa86b} .k-interrupt .kind{background:rgba(255,168,107,.15);color:#ffa86b}
-  .k-reflect .sname{color:var(--reflect)} .k-reflect .kind{background:rgba(199,146,255,.15);color:var(--reflect)}
+  .spellbook { width:min(940px,100%); margin-top:14px; display:grid; grid-template-columns:repeat(auto-fill,minmax(148px,1fr)); gap:10px; }
+  .card { background:rgba(14,6,32,.7); border:1px solid #2a2150; border-radius:11px; padding:9px 11px; font-size:12px; }
+  .card .sname{font-weight:800; letter-spacing:1px; font-size:15px} .card .meta{color:var(--muted); margin-top:2px}
+  .card .kind{float:right; font-size:10px; padding:1px 7px; border-radius:8px}
+  .k-attack .sname{color:var(--gold)} .k-attack .kind{background:rgba(255,224,102,.14);color:var(--gold)}
+  .k-shield .sname{color:var(--cyan)} .k-shield .kind{background:rgba(33,230,255,.14);color:var(--cyan)}
+  .k-heal .sname{color:var(--green)} .k-heal .kind{background:rgba(57,255,158,.12);color:var(--green)}
+  .k-interrupt .sname{color:var(--orange)} .k-interrupt .kind{background:rgba(255,169,77,.15);color:var(--orange)}
+  .k-reflect .sname{color:var(--purple)} .k-reflect .kind{background:rgba(177,75,255,.16);color:var(--purple)}
+  .k-freeze .sname{color:var(--ice)} .k-freeze .kind{background:rgba(159,232,255,.15);color:var(--ice)}
+  .k-scramble .sname{color:#c792ff} .k-scramble .kind{background:rgba(199,146,255,.16);color:#c792ff}
 
-  .toolbar { margin-top:14px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:center; }
-  button { background:linear-gradient(180deg,#2a2650,#211d43); color:var(--ink); border:1px solid #3a3568; border-radius:10px; padding:10px 16px; font-size:14px; letter-spacing:1px; cursor:pointer; transition:transform .06s,border-color .15s; }
-  button:hover{border-color:var(--gold)} button:active{transform:translateY(1px)} button:disabled{opacity:.5;cursor:default}
-  .stat { color:var(--muted); font-size:13px; } .stat b{color:var(--ink);}
+  .toolbar { margin-top:12px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; justify-content:center; }
+  button { background:linear-gradient(180deg,#1c0d3e,#140828); color:var(--ink); border:1px solid #3a3568; border-radius:10px; padding:10px 16px; font-size:14px; letter-spacing:1px; cursor:pointer; transition:.12s; }
+  button:hover{border-color:var(--cyan); box-shadow:0 0 16px rgba(33,230,255,.3)} button:active{transform:translateY(1px)} button:disabled{opacity:.5;cursor:default}
+  .stat{color:var(--muted); font-size:13px} .stat b{color:var(--ink)}
 
-  .overlay { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(6,5,16,.85); backdrop-filter:blur(4px); z-index:20; }
+  .overlay { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(4,2,12,.86); backdrop-filter:blur(5px); z-index:30; }
   .overlay.hide { display:none; }
-  .lobby { width:min(440px,92%); background:linear-gradient(180deg,var(--panel-2),var(--panel)); border:1px solid #2b2752; border-radius:18px; padding:26px; text-align:center; }
-  .lobby h2 { margin:0 0 4px; letter-spacing:3px; }
+  .lobby { width:min(440px,92%); background:linear-gradient(180deg,#160735,#0a0420); border:1px solid #2a2150; border-radius:18px; padding:26px; text-align:center; box-shadow:0 0 40px rgba(177,75,255,.3); }
+  .lobby h2 { margin:0 0 4px; letter-spacing:5px; color:#fff; text-shadow:0 0 12px var(--cyan),0 0 26px var(--magenta); }
   .lobby p { color:var(--muted); font-size:13px; margin:6px 0 16px; }
-  .lobby input[type=text] { width:100%; padding:12px 14px; margin:6px 0; background:#0d0b1f; border:2px solid #33305e; border-radius:10px; color:var(--ink); font-size:15px; text-align:center; outline:none; }
-  .lobby input:focus { border-color:var(--gold); }
-  .row { display:flex; gap:8px; }
-  .row input { flex:1; }
+  .lobby input[type=text] { width:100%; padding:12px 14px; margin:6px 0; background:#0a0420; border:2px solid #33305e; border-radius:10px; color:var(--ink); font-size:15px; text-align:center; outline:none; }
+  .lobby input:focus { border-color:var(--cyan); box-shadow:0 0 14px rgba(33,230,255,.3); }
+  .row { display:flex; gap:8px; } .row input{flex:1}
   .lobby button { width:100%; margin-top:10px; padding:12px; font-size:15px; }
+  #quickBtn { background:linear-gradient(90deg,var(--cyan),var(--purple)); color:#08111a; font-weight:800; border:none; box-shadow:0 0 22px rgba(33,230,255,.4); }
   .divider { color:var(--dim); font-size:12px; margin:14px 0 4px; letter-spacing:2px; }
   .lobbyMsg { min-height:20px; color:var(--gold); font-size:14px; margin-top:12px; }
-  .code-pill { display:inline-block; background:#0d0b1f; border:1px solid #33305e; border-radius:8px; padding:4px 12px; font-size:20px; letter-spacing:4px; color:var(--gold); margin:6px 0; }
+  .code-pill { display:inline-block; background:#0a0420; border:1px solid var(--cyan); border-radius:8px; padding:4px 14px; font-size:22px; letter-spacing:5px; color:var(--cyan); margin:6px 0; text-shadow:0 0 12px var(--cyan); }
 
-  .banner { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(6,5,16,.82); backdrop-filter:blur(3px); z-index:25; }
+  .banner { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(4,2,12,.85); backdrop-filter:blur(4px); z-index:35; }
   .banner.show { display:flex; }
-  .banner h2 { font-size:44px; letter-spacing:6px; margin:0 0 10px; }
-  .banner.win h2{color:var(--you); text-shadow:0 0 30px rgba(94,230,168,.5)} .banner.lose h2{color:var(--foe); text-shadow:0 0 30px rgba(255,107,139,.5)}
-  .floaty { position:absolute; font-weight:800; font-size:22px; pointer-events:none; animation:rise 1s ease-out forwards; }
-  @keyframes rise { from{opacity:1; transform:translateY(0)} to{opacity:0; transform:translateY(-40px)} }
+  .banner h2 { font-size:48px; letter-spacing:8px; margin:0 0 10px; }
+  .banner.win h2{color:#fff; text-shadow:0 0 14px var(--cyan),0 0 34px var(--cyan)} .banner.lose h2{color:#fff; text-shadow:0 0 14px var(--magenta),0 0 34px var(--magenta)}
+  .floaty { position:absolute; font-weight:900; font-size:22px; pointer-events:none; text-shadow:0 0 10px currentColor; animation:rise 1s ease-out forwards; z-index:5; }
+  @keyframes rise { from{opacity:1; transform:translateY(0)} to{opacity:0; transform:translateY(-46px)} }
+
+  /* 冰凍全螢幕效果 */
+  #frost { position:fixed; inset:0; z-index:28; display:none; pointer-events:none;
+    box-shadow:inset 0 0 120px 40px rgba(159,232,255,.55), inset 0 0 40px 10px rgba(255,255,255,.5);
+    background:radial-gradient(circle at 50% 50%, transparent 40%, rgba(159,232,255,.18) 100%); }
+  #frost.show { display:block; animation:frostin .25s ease-out; }
+  @keyframes frostin { from{opacity:0} to{opacity:1} }
+  #frost .ftxt { position:absolute; top:22%; left:0; right:0; text-align:center; font-size:40px; font-weight:900; letter-spacing:10px; color:#eafcff; text-shadow:0 0 16px var(--ice),0 0 34px var(--cyan); }
 </style>
 </head>
 <body>
   <h1>咒語對決</h1>
-  <div class="sub">SPELL TYPING DUEL · 線上對戰 — <a href="practice.html">單人練習 →</a></div>
+  <div class="sub">NEON SPELL DUEL · 線上對戰 — <a href="practice.html">單人練習 →</a></div>
 
-  <div class="arena">
-    <div class="wizard you" id="youPanel">
-      <div class="wtop"><span class="name" id="youName">🧙 你</span><span class="stat">連擊 <b id="combo">0</b></span></div>
-      <div class="avatar" id="youAvatar">🧙‍♂️</div>
-      <div class="hpbar"><div class="hpfill" id="youHp"></div><div class="shieldfill" id="youShield"></div></div>
-      <div class="hptext" id="youHpText">100 / 100</div>
-      <div class="status" id="youStatus"></div>
-      <div class="castrow"><div class="castlabel" id="youCastLabel">打出咒語名字來啟動…</div></div>
-    </div>
-    <div class="wizard foe" id="foePanel">
-      <div class="wtop"><span class="name" id="foeName">對手 🪄</span><span class="stat" id="connText">連線中…</span></div>
-      <div class="avatar" id="foeAvatar">🧙</div>
-      <div class="hpbar"><div class="hpfill" id="foeHp"></div><div class="shieldfill" id="foeShield"></div></div>
-      <div class="hptext" id="foeHpText">100 / 100</div>
-      <div class="status" id="foeStatus"></div>
-      <div class="castrow">
+  <div class="arena" id="arena">
+    <div class="sun"></div>
+    <div class="grid"></div>
+    <div class="horizon"></div>
+    <canvas id="fx"></canvas>
+    <div class="scan"></div>
+
+    <div class="fighter foe" id="foeFighter">
+      <div class="connpill" id="connText">連線中…</div>
+      <div class="hud">
+        <span class="nm" id="foeName">對手</span>
+        <div class="hpbar"><div class="hpfill" id="foeHp"></div><div class="shieldfill" id="foeShield"></div></div>
+        <div class="hptext" id="foeHpText">100 / 100</div>
+        <div class="status" id="foeStatus"></div>
         <div class="castlabel" id="foeCastLabel">等待對手…</div>
         <div class="charge"><div class="chargefill" id="foeCharge"></div></div>
+      </div>
+      <div class="sprite-wrap"><div class="circle" id="foeCircle"></div><div class="sprite" id="foeAvatar">🧙</div></div>
+    </div>
+
+    <div class="fighter you" id="youFighter">
+      <div class="sprite-wrap"><div class="circle" id="youCircle"></div><div class="sprite" id="youAvatar">🧙</div></div>
+      <div class="hud">
+        <span class="nm" id="youName">你</span> <span class="stat" style="float:right">連擊 <b id="combo">0</b></span>
+        <div class="hpbar"><div class="hpfill" id="youHp"></div><div class="shieldfill" id="youShield"></div></div>
+        <div class="hptext" id="youHpText">100 / 100</div>
+        <div class="status" id="youStatus"></div>
+        <div class="castlabel" id="youCastLabel">打出咒語名字來啟動…</div>
       </div>
     </div>
   </div>
@@ -123,7 +184,7 @@
   <div class="console">
     <div class="state" id="stateLabel">待命 · 打出咒語名字</div>
     <div class="incant" id="incant"></div>
-    <div class="hint" id="hint">打咒語名字啟動,再把隨機咒文打完。對手讀咒你看得到,可用 silence 打斷 / shield 開盾 / mirror 反彈。</div>
+    <div class="hint" id="hint">打咒語名字啟動,再把隨機咒文打完。對手讀咒你看得到:silence 打斷 / shield 開盾 / mirror 反彈 / frost 冰凍。</div>
     <input id="type" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="在這裡打字…" disabled />
     <div class="toolbar">
       <span class="stat">WPM <b id="wpm">0</b></span>
@@ -134,11 +195,10 @@
 
   <div class="spellbook" id="spellbook"></div>
 
-  <!-- 大廳 -->
   <div class="overlay" id="lobby">
     <div class="lobby">
       <h2>咒語對決</h2>
-      <p>線上雙人打字對戰</p>
+      <p>霓虹雙人打字對戰</p>
       <input type="text" id="nameInput" maxlength="16" placeholder="你的法師名(選填)">
       <button id="quickBtn">⚡ 快速配對</button>
       <div class="divider">— 或和朋友對戰 —</div>
@@ -150,7 +210,6 @@
     </div>
   </div>
 
-  <!-- 勝負 -->
   <div class="banner" id="banner">
     <div style="text-align:center">
       <h2 id="bannerText">勝利</h2>
@@ -160,267 +219,250 @@
     </div>
   </div>
 
+  <div id="frost"><div class="ftxt">❄ 冰凍 ❄</div></div>
+
+<script src="words.js"></script>
 <script>
-// ---------- 單字庫 ----------
-const WORDS = {
-  easy: ["rain","wind","fire","leaf","moss","star","moon","wolf","bear","hawk","crow","dust","gold","iron","salt","wave","tide","reef","cave","root","vine","seed","bark","fang","claw","horn","wing","tail","coal","lava","sand","snow","mist","dawn","dusk","frog","hare","lynx","mole","newt"],
-  medium: ["storm","flame","ember","frost","blaze","shard","cloud","raven","crown","spark","thorn","amber","crest","drift","gleam","flare","surge","quake","bloom","flint","coral","pearl","ridge","brook","marsh","stone","ghost","cinder","willow","cedar","meadow","canyon","glacier","sabres"],
-  hard: ["thunder","crystal","phantom","cascade","gravity","eclipse","mercury","paradox","tempest","whisper","shatter","horizon","mystery","obsidian","radiance","twilight","cyclone","inferno","torrent","gossamer","serpent","emerald","lantern","monsoon","nebula","zephyr","aurora"],
+// ==================== 題庫 ====================
+const FALLBACK = {
+  short:["rain","wind","fire","leaf","moss","star","moon","wolf","bear","hawk","dust","gold","iron","salt","wave","tide","cave","root","vine","seed"],
+  mid:["storm","flame","ember","frost","blaze","shard","cloud","raven","crown","spark","thorn","amber","crest","drift","gleam","flare","surge","quake","bloom","flint"],
+  long:["thunder","crystal","phantom","cascade","gravity","eclipse","mercury","paradox","tempest","whisper","shatter","horizon","mystery","obsidian","radiance","twilight"],
 };
-function pickWords(count, diff) {
-  const pool = WORDS[diff].slice(); const out = [];
-  for (let i = 0; i < count && pool.length; i++) out.push(pool.splice(Math.floor(Math.random()*pool.length),1)[0]);
-  return out;
-}
+const WORDS = (window.WORDBANK && window.WORDBANK.short && window.WORDBANK.short.length) ? window.WORDBANK : FALLBACK;
+function pickWords(count, bucket){ const pool=(WORDS[bucket]||FALLBACK[bucket]).slice(), out=[]; for(let i=0;i<count&&pool.length;i++) out.push(pool.splice(Math.floor(Math.random()*pool.length),1)[0]); return out; }
+function shuffle(arr, from){ for(let i=arr.length-1;i>(from||0);i--){ const j=(from||0)+Math.floor(Math.random()*(i-(from||0)+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; } }
+
+// ==================== 咒語 ====================
 const SPELLS = [
-  { name:"spark",    zh:"火花",    type:"attack",    count:1, diff:"easy",   power:8,  kind:"攻擊" },
-  { name:"fireball", zh:"火球術",  type:"attack",    count:3, diff:"medium", power:20, kind:"攻擊" },
-  { name:"meteor",   zh:"隕石術",  type:"attack",    count:5, diff:"hard",   power:46, kind:"攻擊" },
-  { name:"shield",   zh:"護盾",    type:"shield",    count:2, diff:"easy",   power:30, kind:"護盾" },
-  { name:"heal",     zh:"治療",    type:"heal",      count:3, diff:"medium", power:26, kind:"補血" },
-  { name:"silence",  zh:"沉默/打斷", type:"interrupt", count:2, diff:"medium", power:0, kind:"打斷" },
-  { name:"mirror",   zh:"鏡壁/反彈", type:"reflect",   count:3, diff:"hard",  power:0, kind:"反彈" },
+  { name:"spark",    zh:"火花",    type:"attack",    count:1, bucket:"short", power:8,  kind:"攻擊" },
+  { name:"fireball", zh:"火球術",  type:"attack",    count:3, bucket:"mid",   power:20, kind:"攻擊" },
+  { name:"meteor",   zh:"隕石術",  type:"attack",    count:5, bucket:"long",  power:46, kind:"攻擊" },
+  { name:"shield",   zh:"護盾",    type:"shield",    count:2, bucket:"short", power:30, kind:"護盾" },
+  { name:"heal",     zh:"治療",    type:"heal",      count:3, bucket:"mid",   power:26, kind:"補血" },
+  { name:"silence",  zh:"沉默/打斷", type:"interrupt", count:2, bucket:"mid",  power:0, kind:"打斷" },
+  { name:"mirror",   zh:"鏡壁/反彈", type:"reflect",   count:3, bucket:"mid",  power:0, kind:"反彈" },
+  { name:"frost",    zh:"冰凍",    type:"freeze",    count:3, bucket:"mid",   power:0, kind:"冰凍" },
+  { name:"scramble", zh:"混亂",    type:"scramble",  count:4, bucket:"long",  power:0, kind:"混亂" },
 ];
 const SPELL_MAP = Object.fromEntries(SPELLS.map(s => [s.name, s]));
-const KIND_CLASS = { attack:"k-attack", shield:"k-shield", heal:"k-heal", interrupt:"k-interrupt", reflect:"k-reflect" };
+const KIND_CLASS = { attack:"k-attack", shield:"k-shield", heal:"k-heal", interrupt:"k-interrupt", reflect:"k-reflect", freeze:"k-freeze", scramble:"k-scramble" };
+
+// 每招專屬特效設定(強度越高、越大越震)
+const SPELL_FX = {
+  spark:    { shape:"orb",   size:4,  sp:22, color:"#7fdcff", core:"#ffffff", trail:["#7fdcff"], trailN:1, imp:{n:14,spd:5,ring:38,shake:5,colors:["#7fdcff","#ffffff"]} },
+  fireball: { shape:"orb",   size:8,  sp:15, color:"#ff5edb", core:"#ffe066", trail:["#ff7a3c","#ff5edb"], trailN:2, imp:{n:26,spd:6,ring:56,shake:9,colors:["#ff7a3c","#ff5edb","#ffe066"]} },
+  meteor:   { shape:"rock",  size:15, sp:11, color:"#ff3d6e", core:"#ffcf66", trail:["#7a6b6b","#ff3d6e"], trailN:2, smoke:true, spin:true, imp:{n:46,spd:8,ring:84,shake:16,colors:["#ff3d6e","#ffcf66","#ffffff"],flash:"#ff3d6e"} },
+  frost:    { shape:"shard", size:9,  sp:14, color:"#bfefff", core:"#ffffff", trail:["#bfefff","#7fdcff"], trailN:2, spin:true, imp:{n:26,spd:5,ring:56,shake:8,colors:["#bfefff","#ffffff","#7fdcff"]} },
+  scramble: { shape:"glitch",size:7,  sp:16, color:"#b14bff", core:"#39ff9e", trail:["#b14bff","#39ff9e","#ffe066","#ff2fb9"], trailN:3, imp:{n:30,spd:6,ring:50,shake:7,colors:["#b14bff","#39ff9e","#ffe066","#ff2fb9"]} },
+  silence:  { shape:"orb",   size:6,  sp:20, color:"#ffa94d", core:"#ffffff", trail:["#ffa94d"], trailN:1, imp:{n:18,spd:6,ring:46,shake:6,colors:["#ffa94d","#ffffff"]} },
+};
+const castColor = n => (SPELL_FX[n] && SPELL_FX[n].color) || "#21e6ff";
+const ROCK = [[1,0],[0.55,0.6],[-0.2,0.9],[-0.9,0.35],[-0.7,-0.5],[0.1,-0.9],[0.8,-0.55]];
+
 const $ = id => document.getElementById(id);
 const input = $("type"), incantEl = $("incant");
 
-// ---------- 本機遊戲狀態 ----------
-let ws = null, youIdx = 0;
-let running = false;
-let mode = "idle", spell = null, words = [], wordIndex = 0, errFlag = false;
-let oppCast = null; // {spell, index}
-let combo = 0, hits = 0, misses = 0, typedChars = 0, startTime = 0;
+// ==================== 特效引擎 ====================
+const arena = $("arena"), canvas = $("fx"), fxc = canvas.getContext("2d");
+let W=0, H=0, DPR=Math.min(2, window.devicePixelRatio||1);
+let particles=[], shots=[], rings=[], shields=[], auras={you:false,foe:false};
+let shake={t:0,max:1,mag:0}, flashT=0, flashMax=1, flashColor="#fff";
 
-// ---------- 咒語書 ----------
-function renderSpellbook() {
-  const sb = $("spellbook"); sb.innerHTML = "";
-  for (const s of SPELLS) {
-    const eff = s.type==="attack"?`${s.power} 傷`:s.type==="shield"?`+${s.power} 盾`:s.type==="heal"?`+${s.power} 血`:s.type==="interrupt"?"中斷對手":"反彈一次";
-    const d = document.createElement("div"); d.className = "card " + KIND_CLASS[s.type];
-    d.innerHTML = `<span class="kind">${s.kind}</span><div class="sname">${s.name}</div><div>${s.zh}</div><div class="meta">${s.count} 字 · ${eff}</div>`;
-    sb.appendChild(d);
+function fxResize(){ const r=arena.getBoundingClientRect(); W=r.width; H=r.height; canvas.width=W*DPR; canvas.height=H*DPR; canvas.style.width=W+"px"; canvas.style.height=H+"px"; }
+window.addEventListener("resize", fxResize);
+function avatarOf(w){ return w==="you"?$("youAvatar"):$("foeAvatar"); }
+function fighterOf(w){ return w==="you"?$("youFighter"):$("foeFighter"); }
+function posOf(w){ const el=avatarOf(w), r=el.getBoundingClientRect(), a=arena.getBoundingClientRect(); return { x:r.left+r.width/2-a.left, y:r.top+r.height/2-a.top }; }
+function pick(a){ return a[Math.floor(Math.random()*a.length)]; }
+function addShake(mag){ shake.mag=mag; shake.max=Math.round(mag*1.4)+8; shake.t=shake.max; }
+function burstC(x,y,colors,n,spd){ for(let i=0;i<n;i++){ const a=Math.random()*Math.PI*2, s=spd*(.4+Math.random()); particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:1,dec:.02+Math.random()*.02,r:1.5+Math.random()*2.5,color:pick(colors)}); } }
+function ringAt(x,y,color,maxr){ rings.push({x,y,r:6,maxr,life:1,color}); }
+
+function fxCast(w,color){ const c=$(w==="you"?"youCircle":"foeCircle"); c.style.setProperty("--c",color); c.classList.add("active"); }
+function fxEndCast(w){ $(w==="you"?"youCircle":"foeCircle").classList.remove("active"); }
+function fxShot(from,to,cfg,onHit){ const a=posOf(from), b=posOf(to); shots.push({x:a.x,y:a.y,tx:b.x,ty:b.y,cfg,onHit,ang:Math.random()*7}); }
+function fxImpactCfg(w,imp){ const p=posOf(w); burstC(p.x,p.y,imp.colors,imp.n,imp.spd); ringAt(p.x,p.y,imp.colors[0],imp.ring); if(imp.ring>60) ringAt(p.x,p.y,imp.colors[0],imp.ring*0.6); addShake(imp.shake); if(imp.flash){ flashT=flashMax=10; flashColor=imp.flash; } const s=avatarOf(w); s.classList.remove("hit"); void s.offsetWidth; s.classList.add("hit"); }
+function fxShieldDome(w,color){ shields.push({w,color,life:1,dec:.012}); }
+function fxHeal(w){ const p=posOf(w); for(let i=0;i<16;i++) particles.push({x:p.x+(Math.random()-.5)*44,y:p.y+20,vx:(Math.random()-.5)*.6,vy:-1.4-Math.random(),life:1,dec:.018,r:2+Math.random()*2,color:"#39ff9e"}); }
+
+function drawShot(s){
+  const c=s.cfg;
+  fxc.save(); fxc.translate(s.x,s.y); if(c.spin) fxc.rotate(s.ang);
+  fxc.shadowBlur=22; fxc.shadowColor=c.color;
+  if(c.shape==="orb"){ fxc.fillStyle=c.color; fxc.beginPath(); fxc.arc(0,0,c.size,0,7); fxc.fill(); fxc.fillStyle=c.core; fxc.beginPath(); fxc.arc(0,0,c.size*0.45,0,7); fxc.fill(); }
+  else if(c.shape==="shard"){ fxc.fillStyle=c.color; fxc.beginPath(); fxc.moveTo(0,-c.size); fxc.lineTo(c.size*0.55,0); fxc.lineTo(0,c.size); fxc.lineTo(-c.size*0.55,0); fxc.closePath(); fxc.fill(); fxc.fillStyle=c.core; fxc.beginPath(); fxc.arc(0,0,c.size*0.3,0,7); fxc.fill(); }
+  else if(c.shape==="rock"){ fxc.fillStyle="#2a1522"; fxc.strokeStyle=c.color; fxc.lineWidth=3; fxc.beginPath(); ROCK.forEach((p,i)=>{ const x=p[0]*c.size,y=p[1]*c.size; i?fxc.lineTo(x,y):fxc.moveTo(x,y); }); fxc.closePath(); fxc.fill(); fxc.stroke(); fxc.fillStyle=c.core; fxc.beginPath(); fxc.arc(0,0,c.size*0.35,0,7); fxc.fill(); }
+  else if(c.shape==="glitch"){ const off=c.size*0.6; fxc.globalAlpha=.9; fxc.fillStyle=c.color; fxc.fillRect(-c.size/2-off,-c.size/2,c.size,c.size); fxc.fillStyle="#39ff9e"; fxc.fillRect(-c.size/2+off,-c.size/2,c.size,c.size); fxc.fillStyle="#ffe066"; fxc.fillRect(-c.size/2,-c.size/2,c.size,c.size); fxc.globalAlpha=1; }
+  fxc.restore();
+}
+
+function draw(){
+  requestAnimationFrame(draw);
+  fxc.setTransform(DPR,0,0,DPR,0,0); fxc.clearRect(0,0,W,H);
+  if(shake.t>0){ const s=shake.mag*(shake.t/shake.max); arena.style.transform=`translate(${(Math.random()-.5)*s}px,${(Math.random()-.5)*s}px)`; if(--shake.t<=0) arena.style.transform=""; }
+  fxc.globalCompositeOperation="lighter";
+
+  for(let i=shots.length-1;i>=0;i--){ const s=shots[i], c=s.cfg; const dx=s.tx-s.x, dy=s.ty-s.y, d=Math.hypot(dx,dy);
+    if(d<c.sp){ s.onHit&&s.onHit(); shots.splice(i,1); continue; }
+    s.x+=dx/d*c.sp; s.y+=dy/d*c.sp; s.ang+=c.spin?.25:0;
+    for(let k=0;k<c.trailN;k++) particles.push({x:s.x+(Math.random()-.5)*4,y:s.y+(Math.random()-.5)*4,vx:0,vy:0,life:1,dec:.05,r:c.size*.5,color:pick(c.trail)});
+    if(c.smoke) particles.push({x:s.x,y:s.y,vx:(Math.random()-.5)*.4,vy:-.3,life:1,dec:.012,r:c.size*.7,color:"#5a4a5a",grow:.25});
+    drawShot(s);
   }
+  fxc.shadowBlur=10;
+  for(let i=particles.length-1;i>=0;i--){ const p=particles[i]; p.x+=p.vx; p.y+=p.vy; p.vy+=.02; if(p.grow) p.r+=p.grow; p.life-=p.dec; if(p.life<=0){ particles.splice(i,1); continue; }
+    fxc.globalAlpha=Math.max(0,p.life); fxc.shadowColor=p.color; fxc.fillStyle=p.color; fxc.beginPath(); fxc.arc(p.x,p.y,p.r,0,7); fxc.fill(); }
+  fxc.globalAlpha=1;
+  for(let i=rings.length-1;i>=0;i--){ const r=rings[i]; r.r+=(r.maxr-r.r)*.18; r.life-=.05; if(r.life<=0){ rings.splice(i,1); continue; }
+    fxc.globalAlpha=Math.max(0,r.life); fxc.strokeStyle=r.color; fxc.lineWidth=3; fxc.shadowBlur=18; fxc.shadowColor=r.color; fxc.beginPath(); fxc.arc(r.x,r.y,r.r,0,7); fxc.stroke(); }
+  fxc.globalAlpha=1;
+  for(let i=shields.length-1;i>=0;i--){ const sh=shields[i]; sh.life-=sh.dec; if(sh.life<=0){ shields.splice(i,1); continue; }
+    const p=posOf(sh.w); fxc.globalAlpha=Math.max(0,sh.life)*.8; fxc.strokeStyle=sh.color; fxc.lineWidth=2.5; fxc.shadowBlur=16; fxc.shadowColor=sh.color; fxc.beginPath(); fxc.arc(p.x,p.y-6,42,0,7); fxc.stroke(); fxc.globalAlpha=Math.max(0,sh.life)*.3; fxc.beginPath(); fxc.arc(p.x,p.y-6,34,0,7); fxc.stroke(); }
+  fxc.globalAlpha=1;
+  const t=performance.now()/400;
+  for(const w of ["you","foe"]) if(auras[w]){ const p=posOf(w), rr=30+Math.sin(t)*4; fxc.globalAlpha=.55; fxc.strokeStyle="#b14bff"; fxc.lineWidth=2; fxc.shadowBlur=16; fxc.shadowColor="#b14bff"; fxc.beginPath(); fxc.arc(p.x,p.y-6,rr,0,7); fxc.stroke(); }
+  fxc.globalAlpha=1; fxc.shadowBlur=0; fxc.globalCompositeOperation="source-over";
+  if(flashT>0){ fxc.globalAlpha=(flashT/flashMax)*0.5; fxc.fillStyle=flashColor; fxc.fillRect(0,0,W,H); fxc.globalAlpha=1; flashT--; }
 }
 
-// ---------- 連線 ----------
-function connect(room) {
-  const name = $("nameInput").value.trim();
-  const proto = location.protocol === "https:" ? "wss" : "ws";
-  ws = new WebSocket(`${proto}://${location.host}`);
-  ws.onopen = () => ws.send(JSON.stringify({ t: "join", room, name }));
-  ws.onmessage = (e) => handle(JSON.parse(e.data));
-  ws.onclose = () => { if (running) { $("connText").textContent = "已斷線"; } };
-  ws.onerror = () => $("lobbyMsg").textContent = "連線失敗,請確認伺服器已啟動。";
-}
+// ==================== 咒語書 ====================
+function renderSpellbook(){ const sb=$("spellbook"); sb.innerHTML="";
+  for(const s of SPELLS){ const eff=s.type==="attack"?`${s.power} 傷`:s.type==="shield"?`+${s.power} 盾`:s.type==="heal"?`+${s.power} 血`:s.type==="interrupt"?"中斷對手":s.type==="reflect"?"反彈一次":s.type==="freeze"?"凍結 2.5s":"打亂 3s";
+    const d=document.createElement("div"); d.className="card "+KIND_CLASS[s.type];
+    d.innerHTML=`<span class="kind">${s.kind}</span><div class="sname">${s.name}</div><div>${s.zh}</div><div class="meta">${s.count} 字 · ${eff}</div>`; sb.appendChild(d); } }
 
-function handle(m) {
-  switch (m.t) {
-    case "waiting":
-      $("lobbyMsg").innerHTML = m.code
-        ? `房間已建立,把房號給朋友:<br><span class="code-pill">${m.code}</span><br>等待對手加入…`
-        : "配對中,等待對手…";
-      break;
-    case "roomFull": $("lobbyMsg").textContent = "這個房間已滿,換一個房號吧。"; break;
-    case "start": onStart(m); break;
-    case "state": applyState(m.you, m.opp); break;
-    case "oppCast": onOppCast(m.spell); break;
-    case "oppProgress": onOppProgress(m.index); break;
-    case "resolve": onResolve(m); break;
-    case "interrupted": onInterrupted(); break;
-    case "gameover": onGameover(m.win); break;
-    case "oppLeft": onOppLeft(); break;
-    case "oppWantsRematch": $("rematchMsg").textContent = "對手想再來一場!"; break;
-  }
-}
+// ==================== 狀態 ====================
+let ws=null, youIdx=0, running=false;
+let mode="idle", spell=null, words=[], wordIndex=0, errFlag=false, oppCast=null;
+let combo=0, hits=0, misses=0, typedChars=0, startTime=0;
+let scrambledUntil=0, frozenTimer=null;
 
-// ---------- 開局 ----------
-function onStart(m) {
-  youIdx = m.youIdx; running = true;
-  $("lobby").classList.add("hide"); $("banner").className = "banner";
-  $("foeName").textContent = (m.oppName || "對手") + " 🪄";
-  $("connText").textContent = "對戰中";
-  $("rematchMsg").textContent = "";
-  mode = "idle"; spell = null; words = []; wordIndex = 0; errFlag = false; oppCast = null;
-  combo = 0; hits = 0; misses = 0; typedChars = 0; startTime = performance.now();
-  $("combo").textContent = 0; $("hits").textContent = 0; $("misses").textContent = 0; $("wpm").textContent = 0;
-  $("foeCharge").style.width = "0%"; $("foeCastLabel").textContent = "對手待命中…";
-  $("youCastLabel").textContent = "打出咒語名字來啟動…";
-  incantEl.innerHTML = ""; input.value = ""; input.disabled = false; input.focus();
-  applyState(m.you, m.opp);
-  setState("待命 · 打出咒語名字");
-}
+function connect(room){ const name=$("nameInput").value.trim(); const proto=location.protocol==="https:"?"wss":"ws";
+  ws=new WebSocket(`${proto}://${location.host}`);
+  ws.onopen=()=>ws.send(JSON.stringify({t:"join",room,name}));
+  ws.onmessage=e=>handle(JSON.parse(e.data));
+  ws.onclose=()=>{ if(running) $("connText").textContent="已斷線"; };
+  ws.onerror=()=>$("lobbyMsg").textContent="連線失敗,請確認伺服器已啟動。"; }
 
-// ---------- 狀態渲染 ----------
-function applyState(you, opp) {
-  $("youHp").style.width = you.hp / you.max * 100 + "%";
-  $("foeHp").style.width = opp.hp / opp.max * 100 + "%";
-  $("youShield").style.width = Math.min(100, you.shield / you.max * 100) + "%";
-  $("foeShield").style.width = Math.min(100, opp.shield / opp.max * 100) + "%";
-  $("youHpText").textContent = `${you.hp} / ${you.max}`;
-  $("foeHpText").textContent = `${opp.hp} / ${opp.max}`;
-  let ys = ""; if (you.shield>0) ys += `<span class="tag sh">🛡 ${you.shield}</span>`; if (you.reflect) ys += `<span class="tag rf">🪞 反彈就緒</span>`;
-  $("youStatus").innerHTML = ys;
-  $("foeStatus").innerHTML = (opp.shield>0?`<span class="tag sh">🛡 ${opp.shield}</span>`:"") + (opp.reflect?`<span class="tag rf">🪞 反彈</span>`:"");
-}
-function setState(t){ $("stateLabel").textContent = t; }
-function hitAvatar(el){ el.classList.add("hit"); setTimeout(()=>el.classList.remove("hit"),300); }
-function floaty(panel, text, color){ const f=document.createElement("div"); f.className="floaty"; f.textContent=text; f.style.color=color; f.style.left=(30+Math.random()*40)+"%"; f.style.top="40%"; panel.appendChild(f); setTimeout(()=>f.remove(),1000); }
-function updateWpm(){ const mins=(performance.now()-startTime)/60000; $("wpm").textContent = mins>0?Math.round((typedChars/5)/mins):0; }
+function handle(m){ switch(m.t){
+  case "waiting": $("lobbyMsg").innerHTML=m.code?`房間已建立,把房號給朋友:<br><span class="code-pill">${m.code}</span><br>等待對手加入…`:"配對中,等待對手…"; break;
+  case "roomFull": $("lobbyMsg").textContent="這個房間已滿,換一個房號吧。"; break;
+  case "start": onStart(m); break;
+  case "state": applyState(m.you,m.opp); break;
+  case "oppCast": onOppCast(m.spell); break;
+  case "oppProgress": onOppProgress(m.index); break;
+  case "resolve": onResolve(m); break;
+  case "interrupted": onInterrupted(); break;
+  case "frozen": onFrozen(m.ms); break;
+  case "scrambled": onScrambled(m.ms); break;
+  case "gameover": onGameover(m.win); break;
+  case "oppLeft": onOppLeft(); break;
+  case "oppWantsRematch": $("rematchMsg").textContent="對手想再來一場!"; break; } }
 
-// ---------- 對手施法顯示 ----------
-function onOppCast(name) {
-  const s = SPELL_MAP[name]; oppCast = { spell:name, index:0 };
-  $("foeCastLabel").innerHTML = `讀取 <b>${name}</b> (${s?s.zh:""})… 可打斷/開盾/反彈`;
-  $("foeCharge").style.width = "4%";
-}
-function onOppProgress(index) {
-  if (!oppCast) return; oppCast.index = index;
-  const s = SPELL_MAP[oppCast.spell]; const total = s ? s.count : 1;
-  $("foeCharge").style.width = Math.min(100, index/total*100) + "%";
-}
-function clearOppCast(){ oppCast=null; $("foeCharge").style.width="0%"; }
+function onStart(m){ youIdx=m.youIdx; running=true;
+  $("lobby").classList.add("hide"); $("banner").className="banner"; fxResize();
+  $("foeName").textContent=m.oppName||"對手"; $("connText").textContent="⚔ 對戰中"; $("rematchMsg").textContent="";
+  mode="idle"; spell=null; words=[]; wordIndex=0; errFlag=false; oppCast=null; scrambledUntil=0;
+  combo=0; hits=0; misses=0; typedChars=0; startTime=performance.now();
+  $("combo").textContent=0; $("hits").textContent=0; $("misses").textContent=0; $("wpm").textContent=0;
+  $("foeCharge").style.width="0%"; $("foeCastLabel").textContent="對手待命中…"; $("youCastLabel").textContent="打出咒語名字來啟動…";
+  fxEndCast("you"); fxEndCast("foe"); auras.you=auras.foe=false;
+  clearTimeout(frozenTimer); $("frost").classList.remove("show"); incantEl.classList.remove("glitch");
+  incantEl.innerHTML=""; input.value=""; input.disabled=false; input.focus();
+  applyState(m.you,m.opp); setState("待命 · 打出咒語名字"); }
 
-// ---------- 結算(來自伺服器)----------
-function onResolve(m) {
-  const iAmCaster = m.caster === youIdx;
-  const casterPanel = iAmCaster ? $("youPanel") : $("foePanel");
-  const casterAvatar = iAmCaster ? $("youAvatar") : $("foeAvatar");
-  const oppOfCaster = 1 - m.caster;
+function applyState(you,opp){
+  $("youHp").style.width=you.hp/you.max*100+"%"; $("foeHp").style.width=opp.hp/opp.max*100+"%";
+  $("youShield").style.width=Math.min(100,you.shield/you.max*100)+"%"; $("foeShield").style.width=Math.min(100,opp.shield/opp.max*100)+"%";
+  $("youHpText").textContent=`${you.hp} / ${you.max}`; $("foeHpText").textContent=`${opp.hp} / ${opp.max}`;
+  let ys=""; if(you.shield>0) ys+=`<span class="tag sh">🛡 ${you.shield}</span>`; if(you.reflect) ys+=`<span class="tag rf">🪞 反彈就緒</span>`; $("youStatus").innerHTML=ys;
+  $("foeStatus").innerHTML=(opp.shield>0?`<span class="tag sh">🛡 ${opp.shield}</span>`:"")+(opp.reflect?`<span class="tag rf">🪞 反彈</span>`:"");
+  auras.you=!!you.reflect; auras.foe=!!opp.reflect; }
+function setState(t){ $("stateLabel").textContent=t; }
+function floaty(w,text,color){ const f=document.createElement("div"); f.className="floaty"; f.textContent=text; f.style.color=color; f.style.left="30%"; f.style.top="10%"; fighterOf(w).appendChild(f); setTimeout(()=>f.remove(),1000); }
+function updateWpm(){ const mins=(performance.now()-startTime)/60000; $("wpm").textContent=mins>0?Math.round((typedChars/5)/mins):0; }
 
-  if (m.effect === "attack") {
-    const targetIsYou = m.target === youIdx;
-    const panel = targetIsYou ? $("youPanel") : $("foePanel");
-    const avatar = targetIsYou ? $("youAvatar") : $("foeAvatar");
-    floaty(panel, (m.reflected?"反彈 ":"") + `-${m.dmg}`, m.reflected?"var(--reflect)":(targetIsYou?"var(--you)":"var(--foe)"));
-    hitAvatar(avatar);
-    if (iAmCaster && !m.reflected) { combo++; $("combo").textContent = combo; $("youCastLabel").innerHTML = `命中 <b>${m.dmg}</b> 傷害!連擊 x${combo}`; }
-    else if (iAmCaster && m.reflected) { combo = 0; $("combo").textContent = 0; $("youCastLabel").innerHTML = `被鏡壁反彈,自傷 ${m.dmg}!`; }
-  } else if (m.effect === "shield") {
-    floaty(casterPanel, `+${m.value}🛡`, "var(--shield)");
-    if (iAmCaster) $("youCastLabel").innerHTML = `護盾就緒,吸收接下來的傷害`;
-  } else if (m.effect === "heal") {
-    floaty(casterPanel, `+${m.value}❤`, "var(--heal)");
-    if (iAmCaster) $("youCastLabel").innerHTML = `恢復 <b>${m.value}</b> 點生命`;
-  } else if (m.effect === "interrupt") {
-    if (m.hit) {
-      const tgtPanel = (oppOfCaster === youIdx) ? $("youPanel") : $("foePanel");
-      floaty(tgtPanel, "打斷!", "#ffa86b");
-      if (oppOfCaster === youIdx) onInterrupted(); else clearOppCast();
-      if (iAmCaster) $("youCastLabel").innerHTML = "成功打斷對手!";
-    } else if (iAmCaster) $("youCastLabel").innerHTML = "對手沒在讀咒,打斷落空…";
-  } else if (m.effect === "reflect") {
-    floaty(casterPanel, "🪞 反彈", "var(--reflect)");
-    if (iAmCaster) $("youCastLabel").innerHTML = "架起鏡壁,反彈對手下一發攻擊";
-  }
-  if (m.caster === (1 - youIdx)) clearOppCast(); // 對手完成施法
+function onOppCast(name){ const s=SPELL_MAP[name]; oppCast={spell:name,index:0}; $("foeCastLabel").innerHTML=`讀取 <b>${name}</b> (${s?s.zh:""})…`; $("foeCharge").style.width="4%"; fxCast("foe", castColor(name)); }
+function onOppProgress(index){ if(!oppCast) return; oppCast.index=index; const s=SPELL_MAP[oppCast.spell], total=s?s.count:1; $("foeCharge").style.width=Math.min(100,index/total*100)+"%"; }
+function clearOppCast(){ oppCast=null; $("foeCharge").style.width="0%"; fxEndCast("foe"); }
+
+function onResolve(m){
+  const iAmCaster=m.caster===youIdx, casterW=m.caster===youIdx?"you":"foe";
+  const oppOfCaster=1-m.caster, oppW=oppOfCaster===youIdx?"you":"foe";
+  if(m.caster===(1-youIdx)) fxEndCast("foe");
+
+  if(m.effect==="attack"){
+    const cfg=SPELL_FX[m.spell]||SPELL_FX.fireball, targetW=m.target===youIdx?"you":"foe";
+    if(m.reflected){
+      fxShot(casterW,oppW,cfg,()=>{ fxShieldDome(oppW,"#b14bff"); const p=posOf(oppW); ringAt(p.x,p.y,"#b14bff",50);
+        const back={shape:"orb",size:cfg.size,sp:cfg.sp,color:"#b14bff",core:"#e6c8ff",trail:["#b14bff"],trailN:1,spin:cfg.spin};
+        fxShot(oppW,casterW,back,()=>{ fxImpactCfg(casterW,{n:cfg.imp.n,spd:cfg.imp.spd,ring:cfg.imp.ring,shake:cfg.imp.shake,colors:["#b14bff","#e6c8ff"]}); floaty(casterW,`反彈 -${m.dmg}`,"#b14bff"); }); });
+      if(iAmCaster){ combo=0; $("combo").textContent=0; $("youCastLabel").innerHTML=`被鏡壁反彈,自傷 ${m.dmg}!`; }
+    } else {
+      fxShot(casterW,targetW,cfg,()=>{ fxImpactCfg(targetW,cfg.imp); floaty(targetW,`-${m.dmg}`, targetW==="you"?"#21e6ff":"#ff2fb9"); });
+      if(iAmCaster){ combo++; $("combo").textContent=combo; $("youCastLabel").innerHTML=`命中 <b>${m.dmg}</b> 傷害!連擊 x${combo}`; }
+    }
+  } else if(m.effect==="shield"){ fxShieldDome(casterW,"#21e6ff"); floaty(casterW,`+${m.value}🛡`,"#21e6ff"); if(iAmCaster) $("youCastLabel").innerHTML="護盾就緒,吸收接下來的傷害";
+  } else if(m.effect==="heal"){ fxHeal(casterW); floaty(casterW,`+${m.value}❤`,"#39ff9e"); if(iAmCaster) $("youCastLabel").innerHTML=`恢復 <b>${m.value}</b> 點生命`;
+  } else if(m.effect==="interrupt"){
+    if(m.hit){ fxShot(casterW,oppW,SPELL_FX.silence,()=>{ fxImpactCfg(oppW,SPELL_FX.silence.imp); floaty(oppW,"打斷!","#ffa94d"); if(oppOfCaster===youIdx) onInterrupted(); else clearOppCast(); }); if(iAmCaster) $("youCastLabel").innerHTML="成功打斷對手!"; }
+    else if(iAmCaster) $("youCastLabel").innerHTML="對手沒在讀咒,打斷落空…";
+  } else if(m.effect==="reflect"){ floaty(casterW,"🪞 反彈","#b14bff"); if(iAmCaster) $("youCastLabel").innerHTML="架起鏡壁,反彈對手下一發攻擊";
+  } else if(m.effect==="freeze"){ const targetW=m.target===youIdx?"you":"foe"; fxShot(casterW,targetW,SPELL_FX.frost,()=>{ fxImpactCfg(targetW,SPELL_FX.frost.imp); floaty(targetW,"❄ 冰凍","#bfefff"); }); if(iAmCaster) $("youCastLabel").innerHTML="凍結對手 2.5 秒!";
+  } else if(m.effect==="scramble"){ const targetW=m.target===youIdx?"you":"foe"; fxShot(casterW,targetW,SPELL_FX.scramble,()=>{ fxImpactCfg(targetW,SPELL_FX.scramble.imp); floaty(targetW,"✦ 混亂","#c792ff"); }); if(iAmCaster) $("youCastLabel").innerHTML="打亂對手咒文!"; }
   updateWpm();
 }
 
-// ---------- 被打斷 ----------
-function onInterrupted() {
-  if (mode === "casting") {
-    mode = "idle"; spell = null; words = []; wordIndex = 0; errFlag = false;
-    input.value = ""; incantEl.innerHTML = ""; setState("待命 · 打出咒語名字");
-    $("youCastLabel").innerHTML = "<b style='color:var(--bad)'>你的施法被打斷了!</b>";
-    input.classList.add("err"); setTimeout(()=>input.classList.remove("err"),300);
-  }
-}
+function onInterrupted(){ if(mode==="casting"){ mode="idle"; spell=null; words=[]; wordIndex=0; errFlag=false; input.value=""; incantEl.innerHTML=""; fxEndCast("you"); setState("待命 · 打出咒語名字"); $("youCastLabel").innerHTML="<b style='color:var(--bad)'>你的施法被打斷了!</b>"; input.classList.add("err"); setTimeout(()=>input.classList.remove("err"),300); } }
 
-// ---------- 輸入 ----------
-input.addEventListener("input", () => {
-  if (!running) return;
-  const raw = input.value.toLowerCase().replace(/[^a-z]/g, "");
-  input.classList.remove("err");
+function onFrozen(ms){ input.disabled=true; input.blur(); $("frost").classList.add("show"); setState("❄ 你被冰凍了!");
+  clearTimeout(frozenTimer); frozenTimer=setTimeout(()=>{ $("frost").classList.remove("show"); if(running){ input.disabled=false; input.focus(); setState(mode==="casting"?"吟唱中":"待命 · 打出咒語名字"); } }, ms); }
 
-  if (mode === "idle") {
-    const s = SPELL_MAP[raw];
-    if (s) { beginCast(s); return; }
-    if (raw.length > 0 && !SPELLS.some(sp => sp.name.startsWith(raw))) { input.classList.add("err"); setTimeout(()=>input.classList.remove("err"),180); input.value = ""; }
-    return;
-  }
-  // casting
-  const target = words[wordIndex];
-  if (raw === target) {
-    hits++; typedChars += target.length; $("hits").textContent = hits;
-    wordIndex++; input.value = ""; errFlag = false;
-    ws.send(JSON.stringify({ t: "progress", index: wordIndex }));
-    if (wordIndex >= words.length) finishCast(); else renderIncant();
-    return;
-  }
-  if (!target.startsWith(raw)) {
-    input.classList.add("err");
-    if (!errFlag) { misses++; $("misses").textContent = misses; combo = 0; $("combo").textContent = 0; errFlag = true; }
-  } else errFlag = false;
+function onScrambled(ms){ scrambledUntil=performance.now()+ms;
+  if(mode==="casting" && words.length-wordIndex>1){ shuffle(words, wordIndex); renderIncant(); }
+  incantEl.classList.add("glitch"); setState("✦ 咒文被打亂!");
+  setTimeout(()=>{ incantEl.classList.remove("glitch"); if(running && mode!=="casting") setState("待命 · 打出咒語名字"); }, ms); }
+
+// ==================== 輸入 ====================
+input.addEventListener("input", ()=>{
+  if(!running) return;
+  const raw=input.value.toLowerCase().replace(/[^a-z]/g,""); input.classList.remove("err");
+  if(mode==="idle"){ const s=SPELL_MAP[raw]; if(s){ beginCast(s); return; }
+    if(raw.length>0 && !SPELLS.some(sp=>sp.name.startsWith(raw))){ input.classList.add("err"); setTimeout(()=>input.classList.remove("err"),180); input.value=""; } return; }
+  const target=words[wordIndex];
+  if(raw===target){ hits++; typedChars+=target.length; $("hits").textContent=hits; wordIndex++; input.value=""; errFlag=false;
+    ws.send(JSON.stringify({t:"progress",index:wordIndex})); if(wordIndex>=words.length) finishCast(); else renderIncant(); return; }
+  if(!target.startsWith(raw)){ input.classList.add("err"); if(!errFlag){ misses++; $("misses").textContent=misses; combo=0; $("combo").textContent=0; errFlag=true; } } else errFlag=false;
   renderIncant();
 });
+function beginCast(s){ spell=s; words=pickWords(s.count,s.bucket); if(performance.now()<scrambledUntil && words.length>1) shuffle(words,0);
+  mode="casting"; wordIndex=0; errFlag=false; input.value="";
+  setState(`吟唱中 · ${s.name.toUpperCase()} (${s.zh})`); $("youCastLabel").innerHTML=`施放 <b>${s.name}</b> — 打完 ${s.count} 段咒文!`;
+  fxCast("you", castColor(s.name)); renderIncant(); ws.send(JSON.stringify({t:"castStart",spell:s.name})); }
+function finishCast(){ ws.send(JSON.stringify({t:"castComplete",spell:spell.name})); mode="idle"; spell=null; words=[]; wordIndex=0; errFlag=false; input.value=""; incantEl.innerHTML=""; fxEndCast("you"); setState("待命 · 打出咒語名字"); }
+function renderIncant(){ incantEl.innerHTML=""; if(mode!=="casting") return;
+  const cur=input.value.toLowerCase().replace(/[^a-z]/g,""), target=words[wordIndex]||"", isPrefix=target.startsWith(cur);
+  words.forEach((w,i)=>{ const span=document.createElement("span"); span.className="word";
+    if(i<wordIndex){ span.classList.add("done"); span.textContent=w; }
+    else if(i===wordIndex){ span.classList.add("active"); if(!isPrefix) span.classList.add("err");
+      const matched=isPrefix?cur.length:0; const g=document.createElement("span"); g.className="g"; g.textContent=w.slice(0,matched);
+      const c=document.createElement("span"); c.className="cursor"; const r=document.createElement("span"); r.className="r"; r.textContent=w.slice(matched); span.append(g,c,r); }
+    else span.textContent=w; incantEl.appendChild(span); }); }
 
-function beginCast(s) {
-  spell = s; words = pickWords(s.count, s.diff); mode = "casting"; wordIndex = 0; errFlag = false; input.value = "";
-  setState(`吟唱中 · ${s.name.toUpperCase()} (${s.zh})`);
-  $("youCastLabel").innerHTML = `施放 <b>${s.name}</b> — 打完 ${s.count} 段咒文!`;
-  renderIncant();
-  ws.send(JSON.stringify({ t: "castStart", spell: s.name }));
-}
-function finishCast() {
-  ws.send(JSON.stringify({ t: "castComplete", spell: spell.name }));
-  mode = "idle"; const done = spell; spell = null; words = []; wordIndex = 0; errFlag = false;
-  input.value = ""; incantEl.innerHTML = ""; setState("待命 · 打出咒語名字");
-}
-function renderIncant() {
-  incantEl.innerHTML = "";
-  if (mode !== "casting") return;
-  const cur = input.value.toLowerCase().replace(/[^a-z]/g,""); const target = words[wordIndex] || ""; const isPrefix = target.startsWith(cur);
-  words.forEach((w, i) => {
-    const span = document.createElement("span"); span.className = "word";
-    if (i < wordIndex) { span.classList.add("done"); span.textContent = w; }
-    else if (i === wordIndex) {
-      span.classList.add("active"); if (!isPrefix) span.classList.add("err");
-      const matched = isPrefix ? cur.length : 0;
-      const g=document.createElement("span"); g.className="g"; g.textContent=w.slice(0,matched);
-      const c=document.createElement("span"); c.className="cursor";
-      const r=document.createElement("span"); r.className="r"; r.textContent=w.slice(matched);
-      span.append(g,c,r);
-    } else span.textContent = w;
-    incantEl.appendChild(span);
-  });
-}
+function onGameover(win){ running=false; input.disabled=true; clearTimeout(frozenTimer); $("frost").classList.remove("show"); $("banner").className="banner show "+(win?"win":"lose"); $("bannerText").textContent=win?"勝利!":"落敗…"; $("rematchMsg").textContent=""; }
+function onOppLeft(){ running=false; input.disabled=true; clearTimeout(frozenTimer); $("frost").classList.remove("show"); $("banner").className="banner show win"; $("bannerText").textContent="對手離開了"; $("rematchMsg").textContent=""; $("rematchBtn").style.display="none"; }
+function backToLobby(){ if(ws){ ws.close(); ws=null; } running=false; input.disabled=true; clearTimeout(frozenTimer); $("frost").classList.remove("show"); $("banner").className="banner"; $("lobby").classList.remove("hide"); $("lobbyMsg").textContent=""; $("rematchBtn").style.display=""; }
 
-// ---------- 勝負 / 離開 ----------
-function onGameover(win) {
-  running = false; input.disabled = true;
-  $("banner").className = "banner show " + (win ? "win" : "lose");
-  $("bannerText").textContent = win ? "勝利!" : "落敗…";
-  $("rematchMsg").textContent = "";
-}
-function onOppLeft() {
-  running = false; input.disabled = true;
-  $("banner").className = "banner show win";
-  $("bannerText").textContent = "對手離開了";
-  $("rematchMsg").textContent = "";
-  $("rematchBtn").style.display = "none";
-}
-function backToLobby() {
-  if (ws) { ws.close(); ws = null; }
-  running = false; input.disabled = true;
-  $("banner").className = "banner"; $("lobby").classList.remove("hide");
-  $("lobbyMsg").textContent = ""; $("rematchBtn").style.display = "";
-}
+$("quickBtn").addEventListener("click",()=>{ $("lobbyMsg").textContent="連線中…"; connect(""); });
+$("joinBtn").addEventListener("click",()=>{ const room=$("roomInput").value.trim(); if(!room){ $("lobbyMsg").textContent="請輸入房號。"; return; } $("lobbyMsg").textContent="連線中…"; connect(room); });
+$("roomInput").addEventListener("keydown",e=>{ if(e.key==="Enter") $("joinBtn").click(); });
+$("rematchBtn").addEventListener("click",()=>{ if(ws){ ws.send(JSON.stringify({t:"rematch"})); $("rematchMsg").textContent="等待對手同意…"; } });
+$("backBtn").addEventListener("click",backToLobby);
+$("leaveBtn").addEventListener("click",backToLobby);
+document.addEventListener("keydown",()=>{ if(running && !input.disabled && document.activeElement!==input) input.focus(); });
 
-$("quickBtn").addEventListener("click", () => { $("lobbyMsg").textContent = "連線中…"; connect(""); });
-$("joinBtn").addEventListener("click", () => {
-  const room = $("roomInput").value.trim();
-  if (!room) { $("lobbyMsg").textContent = "請輸入房號。"; return; }
-  $("lobbyMsg").textContent = "連線中…"; connect(room);
-});
-$("roomInput").addEventListener("keydown", e => { if (e.key === "Enter") $("joinBtn").click(); });
-$("rematchBtn").addEventListener("click", () => { if (ws) { ws.send(JSON.stringify({ t:"rematch" })); $("rematchMsg").textContent = "等待對手同意…"; } });
-$("backBtn").addEventListener("click", backToLobby);
-$("leaveBtn").addEventListener("click", backToLobby);
-document.addEventListener("keydown", () => { if (running && document.activeElement !== input) input.focus(); });
-
-renderSpellbook();
+renderSpellbook(); fxResize(); draw();
 </script>
 </body>
 </html>

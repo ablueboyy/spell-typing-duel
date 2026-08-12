@@ -20,6 +20,8 @@ const SPELLS = {
   heal:     { type: "heal",      power: 26 },
   silence:  { type: "interrupt", power: 0  },
   mirror:   { type: "reflect",   power: 0  },
+  frost:    { type: "freeze",    power: 0, ms: 2500 },
+  scramble: { type: "scramble",  power: 0, ms: 3000 },
 };
 const MAXHP = 100;
 const SHIELD_CAP = 80;
@@ -143,6 +145,14 @@ wss.on("connection", (ws) => {
       }
       else if (sp.type === "reflect") {
         me.reflect = true;
+      }
+      else if (sp.type === "freeze") {
+        ev.target = 1 - ws._idx; ev.ms = sp.ms;
+        send(opp.ws, { t: "frozen", ms: sp.ms });
+      }
+      else if (sp.type === "scramble") {
+        ev.target = 1 - ws._idx; ev.ms = sp.ms;
+        send(opp.ws, { t: "scrambled", ms: sp.ms });
       }
 
       broadcast(r, ev);
