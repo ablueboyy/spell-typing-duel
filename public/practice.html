@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>咒語對決 · Spell Typing Duel</title>
+<style>
+  :root {
+    --bg: #0b0a1a;
+    --panel: #15132b;
+    --panel-2: #1d1a3a;
+    --ink: #e9e6ff;
+    --muted: #9a94c8;
+    --gold: #ffd166;
+    --you: #5ee6a8;
+    --foe: #ff6b8b;
+    --good: #6bff9e;
+    --bad: #ff5c72;
+    --dim: #4b4570;
+    --shield: #6cc6ff;
+    --heal: #7CFF9B;
+    --reflect: #c792ff;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: radial-gradient(1200px 600px at 50% -10%, #241f4d 0%, var(--bg) 60%);
+    color: var(--ink);
+    font-family: "Segoe UI", system-ui, -apple-system, "Microsoft JhengHei", sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    min-height: 100%; padding: 18px;
+    -webkit-user-select: none; user-select: none;
+  }
+  h1 { font-size: 22px; letter-spacing: 4px; margin: 4px 0 2px; font-weight: 700; text-shadow: 0 0 18px rgba(255,209,102,.35); }
+  .sub { color: var(--muted); font-size: 12px; letter-spacing: 1px; margin-bottom: 14px; }
+
+  .arena { width: min(920px, 100%); display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .wizard {
+    background: linear-gradient(180deg, var(--panel-2), var(--panel));
+    border: 1px solid #2b2752; border-radius: 16px; padding: 16px; position: relative; overflow: hidden;
+  }
+  .wizard.you { box-shadow: 0 0 0 1px rgba(94,230,168,.15), 0 10px 40px rgba(0,0,0,.4); }
+  .wizard.foe { box-shadow: 0 0 0 1px rgba(255,107,139,.15), 0 10px 40px rgba(0,0,0,.4); }
+  .wtop { display: flex; align-items: center; justify-content: space-between; }
+  .name { font-weight: 700; letter-spacing: 2px; }
+  .you .name { color: var(--you); } .foe .name { color: var(--foe); }
+  .avatar { font-size: 46px; text-align: center; margin: 6px 0 10px; filter: drop-shadow(0 6px 16px rgba(0,0,0,.5)); transition: transform .08s ease; }
+  .avatar.hit { animation: shake .3s; }
+  @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-8px)} 40%{transform:translateX(7px)} 60%{transform:translateX(-5px)} 80%{transform:translateX(4px)} }
+  .hpbar { height: 16px; background: #0d0b1f; border-radius: 10px; overflow: hidden; border: 1px solid #2b2752; position:relative; }
+  .hpfill { height: 100%; width: 100%; transition: width .35s ease; }
+  .you .hpfill { background: linear-gradient(90deg, #2fae74, var(--you)); }
+  .foe .hpfill { background: linear-gradient(90deg, #b83a53, var(--foe)); }
+  .shieldfill { position:absolute; top:0; left:0; height:100%; background: repeating-linear-gradient(45deg, rgba(108,198,255,.55), rgba(108,198,255,.55) 6px, rgba(108,198,255,.3) 6px, rgba(108,198,255,.3) 12px); width:0%; transition: width .3s; }
+  .hptext { font-size: 12px; color: var(--muted); margin-top: 4px; text-align: right; }
+  .status { font-size: 12px; margin-top: 4px; min-height: 16px; letter-spacing:1px; }
+  .status .tag { margin-right:8px; }
+  .tag.sh { color: var(--shield); } .tag.rf { color: var(--reflect); }
+
+  .castrow { margin-top: 12px; min-height: 40px; }
+  .charge { height: 8px; background:#0d0b1f; border-radius:6px; overflow:hidden; border:1px solid #2b2752; margin-top:6px; }
+  .chargefill { height:100%; width:0%; background: linear-gradient(90deg,#ffb703,var(--gold)); transition: width .1s linear; }
+  .castlabel { font-size: 13px; color: var(--muted); min-height: 18px; }
+  .castlabel b { color: var(--gold); letter-spacing:1px; }
+
+  .console { width: min(920px, 100%); margin-top: 16px; background: linear-gradient(180deg, #17143180, #12102a); border: 1px solid #2b2752; border-radius: 16px; padding: 18px; text-align: center; }
+  .state { font-size: 12px; letter-spacing: 3px; color: var(--muted); text-transform: uppercase; margin-bottom: 8px; }
+  .incant { font-size: 30px; font-weight: 700; letter-spacing: 2px; min-height: 42px; display:flex; gap:14px; justify-content:center; flex-wrap:wrap; align-items:center; }
+  .word { color: var(--dim); transition: color .15s; }
+  .word.done { color: var(--good); text-shadow:0 0 12px rgba(107,255,158,.4); }
+  .word.active .g { color: var(--good); }
+  .word.active .r { color: var(--ink); }
+  .word.active.err { text-shadow:0 0 12px rgba(255,92,114,.5); }
+  .word.active .cursor { border-left:2px solid var(--gold); animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50%{opacity:0} }
+
+  .hint { color: var(--muted); font-size: 13px; min-height: 18px; margin-top:6px; }
+  input#type { margin-top: 14px; width: 100%; max-width: 520px; padding: 14px 16px; font-size: 20px; letter-spacing: 2px; text-align: center; background: #0d0b1f; border: 2px solid #33305e; border-radius: 12px; color: var(--ink); outline: none; caret-color: var(--gold); transition: border-color .15s, box-shadow .15s; }
+  input#type:focus { border-color: var(--gold); box-shadow: 0 0 0 4px rgba(255,209,102,.12); }
+  input#type.err { border-color: var(--bad); box-shadow: 0 0 0 4px rgba(255,92,114,.15); }
+
+  .spellbook { width: min(920px, 100%); margin-top: 16px; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .card { background: var(--panel); border: 1px solid #2b2752; border-radius: 12px; padding: 10px 12px; font-size: 13px; }
+  .card .sname { font-weight:700; letter-spacing:1px; font-size: 15px; }
+  .card .meta { color: var(--muted); margin-top:2px; }
+  .card .kind { float:right; font-size:11px; padding:1px 7px; border-radius:8px; }
+  .k-attack .sname{color:var(--gold)} .k-attack .kind{background:rgba(255,209,102,.15);color:var(--gold)}
+  .k-shield .sname{color:var(--shield)} .k-shield .kind{background:rgba(108,198,255,.15);color:var(--shield)}
+  .k-heal .sname{color:var(--heal)} .k-heal .kind{background:rgba(124,255,155,.12);color:var(--heal)}
+  .k-interrupt .sname{color:#ffa86b} .k-interrupt .kind{background:rgba(255,168,107,.15);color:#ffa86b}
+  .k-reflect .sname{color:var(--reflect)} .k-reflect .kind{background:rgba(199,146,255,.15);color:var(--reflect)}
+
+  .toolbar { margin-top: 14px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:center; }
+  button { background: linear-gradient(180deg,#2a2650,#211d43); color: var(--ink); border:1px solid #3a3568; border-radius:10px; padding:10px 16px; font-size:14px; letter-spacing:1px; cursor:pointer; transition: transform .06s, border-color .15s; }
+  button:hover { border-color: var(--gold); } button:active { transform: translateY(1px); }
+  .stat { color: var(--muted); font-size: 13px; } .stat b { color: var(--ink); }
+
+  .banner { position: fixed; inset:0; display:none; align-items:center; justify-content:center; background: rgba(6,5,16,.82); backdrop-filter: blur(3px); z-index: 20; }
+  .banner.show { display:flex; }
+  .banner h2 { font-size: 44px; letter-spacing:6px; margin:0 0 10px; }
+  .banner.win h2 { color: var(--you); text-shadow:0 0 30px rgba(94,230,168,.5); }
+  .banner.lose h2 { color: var(--foe); text-shadow:0 0 30px rgba(255,107,139,.5); }
+  .floaty { position:absolute; font-weight:800; font-size:22px; pointer-events:none; animation: rise 1s ease-out forwards; }
+  @keyframes rise { from{opacity:1; transform:translateY(0)} to{opacity:0; transform:translateY(-40px)} }
+</style>
+</head>
+<body>
+  <h1>咒語對決</h1>
+  <div class="sub">SPELL TYPING DUEL — 看穿對手,先發制人</div>
+
+  <div class="arena">
+    <div class="wizard you" id="youPanel">
+      <div class="wtop"><span class="name">🧙 你</span><span class="stat">連擊 <b id="combo">0</b></span></div>
+      <div class="avatar" id="youAvatar">🧙‍♂️</div>
+      <div class="hpbar"><div class="hpfill" id="youHp"></div><div class="shieldfill" id="youShield"></div></div>
+      <div class="hptext" id="youHpText">100 / 100</div>
+      <div class="status" id="youStatus"></div>
+      <div class="castrow"><div class="castlabel" id="youCastLabel">打出咒語名字來啟動…</div></div>
+    </div>
+
+    <div class="wizard foe" id="foePanel">
+      <div class="wtop"><span class="name">敵方法師 🪄</span><span class="stat" id="foeLevelText">等級 1</span></div>
+      <div class="avatar" id="foeAvatar">🧙</div>
+      <div class="hpbar"><div class="hpfill" id="foeHp"></div><div class="shieldfill" id="foeShield"></div></div>
+      <div class="hptext" id="foeHpText">100 / 100</div>
+      <div class="status" id="foeStatus"></div>
+      <div class="castrow">
+        <div class="castlabel" id="foeCastLabel">對手正在觀察…</div>
+        <div class="charge"><div class="chargefill" id="foeCharge"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="console">
+    <div class="state" id="stateLabel">待命 · 打出咒語名字</div>
+    <div class="incant" id="incant"></div>
+    <div class="hint" id="hint">先打咒語名字(見下方咒語書),再把跳出來的隨機咒文一個字一個字打完。</div>
+    <input id="type" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="在這裡打字…" />
+    <div class="toolbar">
+      <button id="startBtn">開始 / 重新開始</button>
+      <span class="stat">WPM <b id="wpm">0</b></span>
+      <span class="stat">命中 <b id="hits">0</b> · 失誤 <b id="misses">0</b></span>
+    </div>
+  </div>
+
+  <div class="spellbook" id="spellbook"></div>
+
+  <div class="banner" id="banner">
+    <div style="text-align:center">
+      <h2 id="bannerText">勝利</h2>
+      <button id="againBtn">再來一場</button>
+    </div>
+  </div>
+
+<script>
+// ---------- 真實英文單字庫(依難度) ----------
+const WORDS = {
+  easy: ["rain","wind","fire","leaf","moss","star","moon","wolf","bear","hawk","crow","dust","gold","iron","salt","wave","tide","reef","cave","root","vine","seed","bark","fang","claw","horn","wing","tail","coal","lava","sand","snow","mist","dawn","dusk","frog","hare","lynx","mole","newt"],
+  medium: ["storm","flame","ember","frost","blaze","shard","cloud","raven","crown","spark","thorn","amber","crest","drift","gleam","flare","surge","quake","bloom","flint","coral","pearl","ridge","brook","marsh","stone","ghost","cinder","willow","cedar","meadow","canyon","glacier","sabres"],
+  hard: ["thunder","crystal","phantom","cascade","gravity","eclipse","mercury","paradox","tempest","whisper","shatter","horizon","mystery","obsidian","radiance","twilight","cyclone","inferno","torrent","gossamer","serpent","emerald","lantern","monsoon","nebula","zephyr","aurora"],
+};
+function pickWords(count, diff) {
+  const pool = WORDS[diff].slice();
+  const out = [];
+  for (let i = 0; i < count && pool.length; i++) {
+    const j = Math.floor(Math.random() * pool.length);
+    out.push(pool.splice(j, 1)[0]);
+  }
+  return out;
+}
+
+// ---------- 咒語(name 是要先打出的啟動名字) ----------
+// type: attack / shield / heal / interrupt / reflect
+// count: 咒文字數, diff: 咒文單字難度, power: 效果數值
+const SPELLS = [
+  { name:"spark",     zh:"火花",   type:"attack",    count:1, diff:"easy",   power:8,  kind:"攻擊" },
+  { name:"fireball",  zh:"火球術", type:"attack",    count:3, diff:"medium", power:20, kind:"攻擊" },
+  { name:"meteor",    zh:"隕石術", type:"attack",    count:5, diff:"hard",   power:46, kind:"攻擊" },
+  { name:"shield",    zh:"護盾",   type:"shield",    count:2, diff:"easy",   power:30, kind:"護盾" },
+  { name:"heal",      zh:"治療",   type:"heal",      count:3, diff:"medium", power:26, kind:"補血" },
+  { name:"silence",   zh:"沉默/打斷", type:"interrupt", count:2, diff:"medium", power:0, kind:"打斷" },
+  { name:"mirror",    zh:"鏡壁/反彈", type:"reflect",   count:3, diff:"hard",   power:0, kind:"反彈" },
+];
+const KIND_CLASS = { attack:"k-attack", shield:"k-shield", heal:"k-heal", interrupt:"k-interrupt", reflect:"k-reflect" };
+const findSpell = t => SPELLS.find(s => s.name === t);
+
+// ---------- 狀態 ----------
+let game = null;
+function newGame() {
+  return {
+    running: true,
+    you: { hp: 100, max: 100, shield: 0, reflect: false },
+    foe: { hp: 100, max: 100, shield: 0, level: 1 },
+    mode: "idle",
+    spell: null, words: [], wordIndex: 0,
+    combo: 0, hits: 0, misses: 0, typedChars: 0,
+    _errFlag: false,
+    startTime: performance.now(),
+    foeCast: null,
+    foeNextAt: performance.now() + 4500,
+  };
+}
+
+const $ = id => document.getElementById(id);
+const input = $("type");
+const incantEl = $("incant");
+
+function renderSpellbook() {
+  const sb = $("spellbook"); sb.innerHTML = "";
+  for (const s of SPELLS) {
+    const div = document.createElement("div");
+    div.className = "card " + KIND_CLASS[s.type];
+    const eff = s.type==="attack" ? `${s.power} 傷`
+              : s.type==="shield" ? `+${s.power} 盾`
+              : s.type==="heal"   ? `+${s.power} 血`
+              : s.type==="interrupt" ? "中斷對手"
+              : "反彈一次";
+    div.innerHTML = `<span class="kind">${s.kind}</span>
+      <div class="sname">${s.name}</div>
+      <div>${s.zh}</div>
+      <div class="meta">${s.count} 字 · ${eff}</div>`;
+    sb.appendChild(div);
+  }
+}
+
+function renderIncant() {
+  incantEl.innerHTML = "";
+  if (game.mode !== "casting") return;
+  const words = game.words;
+  const cur = input.value.toLowerCase().replace(/[^a-z]/g,"");
+  const target = words[game.wordIndex] || "";
+  const isPrefix = target.startsWith(cur);
+  words.forEach((w, i) => {
+    const span = document.createElement("span");
+    span.className = "word";
+    if (i < game.wordIndex) { span.classList.add("done"); span.textContent = w; }
+    else if (i === game.wordIndex) {
+      span.classList.add("active");
+      if (!isPrefix) span.classList.add("err");
+      const matched = isPrefix ? cur.length : 0;
+      const g = document.createElement("span"); g.className="g"; g.textContent = w.slice(0, matched);
+      const cursor = document.createElement("span"); cursor.className="cursor";
+      const r = document.createElement("span"); r.className="r"; r.textContent = w.slice(matched);
+      span.append(g, cursor, r);
+    } else span.textContent = w;
+    incantEl.appendChild(span);
+  });
+}
+
+function setState(t){ $("stateLabel").textContent = t; }
+
+// ---------- 輸入 ----------
+input.addEventListener("input", () => {
+  if (!game || !game.running) return;
+  const raw = input.value.toLowerCase().replace(/[^a-z]/g, "");
+  input.classList.remove("err");
+
+  if (game.mode === "idle") {
+    const spell = findSpell(raw);
+    if (spell) { beginCast(spell); return; }
+    const anyPrefix = SPELLS.some(s => s.name.startsWith(raw));
+    if (!anyPrefix && raw.length > 0) { flashErr(); input.value = ""; }
+    return;
+  }
+
+  if (game.mode === "casting") {
+    const target = game.words[game.wordIndex];
+    if (raw === target) {
+      game.hits++; game.typedChars += target.length; $("hits").textContent = game.hits;
+      game.wordIndex++; input.value = ""; game._errFlag = false;
+      if (game.wordIndex >= game.words.length) castComplete();
+      else renderIncant();
+      return;
+    }
+    if (!target.startsWith(raw)) {
+      input.classList.add("err");
+      if (!game._errFlag) { game.misses++; $("misses").textContent = game.misses; game.combo = 0; $("combo").textContent = 0; game._errFlag = true; }
+    } else game._errFlag = false;
+    renderIncant();
+  }
+});
+
+function flashErr(){ input.classList.add("err"); setTimeout(()=>input.classList.remove("err"),180); }
+
+function beginCast(spell) {
+  game.spell = spell;
+  game.words = pickWords(spell.count, spell.diff);
+  game.mode = "casting"; game.wordIndex = 0; game._errFlag = false;
+  input.value = "";
+  setState(`吟唱中 · ${spell.name.toUpperCase()} (${spell.zh})`);
+  $("youCastLabel").innerHTML = `施放 <b>${spell.name}</b> — 打完 ${spell.count} 段隨機咒文!`;
+  $("hint").textContent = "依序打出每段咒文,打對自動跳下一段。想反制對手就趁他讀秒時放盾/打斷/反彈。";
+  renderIncant();
+}
+
+function castComplete() {
+  const s = game.spell;
+  game.combo++; $("combo").textContent = game.combo;
+  let msg = "";
+  if (s.type === "attack") {
+    const bonus = 1 + Math.min(game.combo - 1, 5) * 0.1;
+    const dmg = Math.round(s.power * bonus);
+    const dealt = applyDamage("foe", dmg);
+    floatText($("foePanel"), `-${dealt}`, "var(--foe)"); hitAvatar($("foeAvatar"));
+    msg = `命中 <b>${dealt}</b> 傷害!連擊 x${game.combo}`;
+  } else if (s.type === "shield") {
+    game.you.shield = Math.min(80, game.you.shield + s.power);
+    floatText($("youPanel"), `+${s.power}🛡`, "var(--shield)");
+    msg = `護盾就緒 <b>${game.you.shield}</b>,吸收接下來的傷害`;
+  } else if (s.type === "heal") {
+    const before = game.you.hp;
+    game.you.hp = Math.min(game.you.max, game.you.hp + s.power);
+    floatText($("youPanel"), `+${game.you.hp-before}❤`, "var(--heal)");
+    msg = `恢復 <b>${game.you.hp-before}</b> 點生命`;
+  } else if (s.type === "interrupt") {
+    if (game.foeCast) {
+      const n = game.foeCast.spell.name;
+      game.foeCast = null; $("foeCharge").style.width = "0%";
+      game.foeNextAt = performance.now() + 1600;
+      floatText($("foePanel"), "打斷!", "#ffa86b");
+      $("foeCastLabel").innerHTML = `被打斷!<b>${n}</b> 施法失敗`;
+      msg = `成功打斷對手的 <b>${n}</b>!`;
+    } else msg = "對手此刻沒在讀咒,打斷落空…";
+  } else if (s.type === "reflect") {
+    game.you.reflect = true;
+    floatText($("youPanel"), "🪞 反彈", "var(--reflect)");
+    msg = "架起鏡壁,反彈對手下一發攻擊";
+  }
+  // 回待命
+  game.mode = "idle"; game.spell = null; game.words = []; game.wordIndex = 0; game._errFlag = false;
+  input.value = ""; incantEl.innerHTML = "";
+  setState("待命 · 打出咒語名字");
+  $("youCastLabel").innerHTML = msg;
+  updateStatus(); updateWpm();
+}
+
+// ---------- 傷害 / 護盾 / 反彈 ----------
+function applyDamage(who, amount) {
+  const t = game[who];
+  let amt = amount;
+  if (t.shield > 0) { const ab = Math.min(t.shield, amt); t.shield -= ab; amt -= ab; }
+  t.hp = Math.max(0, t.hp - amt);
+  updateHp(); updateStatus();
+  if (t.hp <= 0) endGame(who === "foe");
+  return amount; // 顯示原始數值
+}
+function foeHitsPlayer(dmg, spellName) {
+  if (game.you.reflect) {
+    game.you.reflect = false;
+    const dealt = applyDamage("foe", dmg);
+    floatText($("foePanel"), `反彈 -${dealt}`, "var(--reflect)"); hitAvatar($("foeAvatar"));
+    $("foeCastLabel").innerHTML = `<b>${spellName}</b> 被鏡壁反彈,自食 ${dealt} 傷害!`;
+  } else {
+    applyDamage("you", dmg);
+    floatText($("youPanel"), `-${dmg}`, "var(--you)"); hitAvatar($("youAvatar"));
+    $("foeCastLabel").innerHTML = `施放 <b>${spellName}</b>,對你造成 ${dmg} 傷害`;
+  }
+  updateStatus();
+}
+
+function updateHp() {
+  $("youHp").style.width = (game.you.hp / game.you.max * 100) + "%";
+  $("foeHp").style.width = (game.foe.hp / game.foe.max * 100) + "%";
+  $("youShield").style.width = Math.min(100, game.you.shield / game.you.max * 100) + "%";
+  $("foeShield").style.width = Math.min(100, game.foe.shield / game.foe.max * 100) + "%";
+  $("youHpText").textContent = `${game.you.hp} / ${game.you.max}`;
+  $("foeHpText").textContent = `${game.foe.hp} / ${game.foe.max}`;
+}
+function updateStatus() {
+  let ys = "";
+  if (game.you.shield > 0) ys += `<span class="tag sh">🛡 ${game.you.shield}</span>`;
+  if (game.you.reflect) ys += `<span class="tag rf">🪞 反彈就緒</span>`;
+  $("youStatus").innerHTML = ys;
+  $("foeStatus").innerHTML = game.foe.shield > 0 ? `<span class="tag sh">🛡 ${game.foe.shield}</span>` : "";
+}
+function hitAvatar(el){ el.classList.add("hit"); setTimeout(()=>el.classList.remove("hit"),300); }
+function floatText(panel, text, color) {
+  const f = document.createElement("div"); f.className = "floaty"; f.textContent = text; f.style.color = color;
+  f.style.left = (30 + Math.random()*40) + "%"; f.style.top = "40%";
+  panel.appendChild(f); setTimeout(()=>f.remove(), 1000);
+}
+function updateWpm() {
+  const mins = (performance.now() - game.startTime) / 60000;
+  $("wpm").textContent = mins > 0 ? Math.round((game.typedChars / 5) / mins) : 0;
+}
+
+// ---------- 對手 AI ----------
+const FOE_ATTACKS = SPELLS.filter(s => s.type === "attack");
+function foeTick(now) {
+  if (!game.foeCast && now >= game.foeNextAt) {
+    // 血少時有機會開盾,否則攻擊
+    if (game.foe.hp < 55 && game.foe.shield <= 0 && Math.random() < 0.35) {
+      game.foe.shield = 26; updateStatus();
+      floatText($("foePanel"), "+26🛡", "var(--shield)");
+      $("foeCastLabel").innerHTML = "對手架起 <b>護盾</b>";
+      game.foeNextAt = now + Math.max(1200, 2400 - game.foe.level*160);
+      return;
+    }
+    const pool = FOE_ATTACKS.filter(s => s.count <= 1 + Math.floor(game.foe.level/2) || s.count===1);
+    const s = (pool.length?pool:FOE_ATTACKS)[Math.floor(Math.random()*(pool.length?pool.length:FOE_ATTACKS.length))];
+    const perWord = Math.max(650, 1400 - game.foe.level*110);
+    const duration = s.count * perWord + 600;
+    game.foeCast = { spell: s, start: now, duration };
+    $("foeCastLabel").innerHTML = `讀取 <b>${s.name}</b> (${s.zh})… 可打斷/開盾/反彈`;
+  }
+  if (game.foeCast) {
+    const p = Math.min(1, (now - game.foeCast.start) / game.foeCast.duration);
+    $("foeCharge").style.width = (p*100) + "%";
+    if (p >= 1) {
+      const s = game.foeCast.spell; game.foeCast = null; $("foeCharge").style.width = "0%";
+      foeHitsPlayer(s.power, s.name);
+      game.foe.level = Math.min(9, game.foe.level + 1); $("foeLevelText").textContent = "等級 " + game.foe.level;
+      game.foeNextAt = now + Math.max(900, 2600 - game.foe.level*170);
+    }
+  }
+}
+
+function loop() {
+  if (game && game.running) {
+    const now = performance.now();
+    foeTick(now);
+    if (game.mode === "casting") renderIncant();
+    updateWpm();
+  }
+  requestAnimationFrame(loop);
+}
+
+function start() {
+  game = newGame(); updateHp(); updateStatus();
+  setState("待命 · 打出咒語名字");
+  $("combo").textContent = 0; $("hits").textContent = 0; $("misses").textContent = 0; $("wpm").textContent = 0;
+  $("foeLevelText").textContent = "等級 1";
+  $("youCastLabel").textContent = "打出咒語名字來啟動…";
+  $("foeCastLabel").textContent = "對手正在觀察…"; $("foeCharge").style.width = "0%";
+  $("hint").textContent = "先打咒語名字(見下方咒語書),再把跳出來的隨機咒文一個字一個字打完。";
+  incantEl.innerHTML = ""; input.value = ""; input.disabled = false; input.focus();
+  $("banner").className = "banner";
+}
+function endGame(youWin) {
+  game.running = false; input.disabled = true;
+  $("banner").className = "banner show " + (youWin ? "win" : "lose");
+  $("bannerText").textContent = youWin ? "勝利!" : "落敗…";
+}
+
+$("startBtn").addEventListener("click", start);
+$("againBtn").addEventListener("click", start);
+document.addEventListener("keydown", () => { if (document.activeElement !== input && game && game.running) input.focus(); });
+
+renderSpellbook(); start(); loop();
+</script>
+</body>
+</html>

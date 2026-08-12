@@ -1,0 +1,16 @@
+{
+  "name": "spell-typing-duel",
+  "version": "1.0.0",
+  "description": "咒語對決 — 線上雙人打字對戰",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.18.0"
+  }
+}
