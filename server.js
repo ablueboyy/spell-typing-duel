@@ -12,19 +12,16 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
 // ---- 咒語效果表(名稱必須和前端一致)----
+// 攻擊咒可以附帶 freeze(凍住對手輸入)或 scramble(打亂對手咒文)
 const SPELLS = {
-  spark:    { type: "attack",    power: 8  },
-  fireball: { type: "attack",    power: 20 },
-  meteor:   { type: "attack",    power: 46 },
-  shield:   { type: "shield",    power: 30 },
+  spark:    { type: "attack",    power: 12 },
+  frost:    { type: "attack",    power: 8,  freeze: 2200 },
+  tornado:  { type: "attack",    power: 15, scramble: 3000 },
+  tsunami:  { type: "attack",    power: 40 },
   heal:     { type: "heal",      power: 26 },
   silence:  { type: "interrupt", power: 0  },
-  mirror:   { type: "reflect",   power: 0  },
-  frost:    { type: "freeze",    power: 0, ms: 2500 },
-  scramble: { type: "scramble",  power: 0, ms: 3000 },
 };
 const MAXHP = 100;
-const SHIELD_CAP = 80;
 
 // ---- 房間管理 ----
 const rooms = new Map();   // code -> room
@@ -144,19 +141,16 @@ wss.on("connection", (ws) => {
       let deadIdx = -1;
 
       if (sp.type === "attack") {
-        let targetIdx = 1 - ws._idx;
-        let reflected = false;
-        if (opp.reflect) { opp.reflect = false; reflected = true; targetIdx = ws._idx; }
+        const targetIdx = 1 - ws._idx;
         const tp = r.players[targetIdx];
-        let amt = sp.power;
-        if (tp.shield > 0) { const ab = Math.min(tp.shield, amt); tp.shield -= ab; amt -= ab; }
-        tp.hp = Math.max(0, tp.hp - amt);
-        ev.dmg = sp.power; ev.reflected = reflected; ev.target = targetIdx;
+        tp.hp = Math.max(0, tp.hp - sp.power);
+        ev.dmg = sp.power; ev.target = targetIdx;
         if (tp.hp <= 0) deadIdx = targetIdx;
-      }
-      else if (sp.type === "shield") {
-        me.shield = Math.min(SHIELD_CAP, me.shield + sp.power);
-        ev.value = sp.power;
+        else {
+          // 附帶效果:被打中的人才會收到
+          if (sp.freeze)   { ev.freeze = sp.freeze;     send(tp.ws, { t: "frozen",    ms: sp.freeze }); }
+          if (sp.scramble) { ev.scramble = sp.scramble; send(tp.ws, { t: "scrambled", ms: sp.scramble }); }
+        }
       }
       else if (sp.type === "heal") {
         const before = me.hp; me.hp = Math.min(me.max, me.hp + sp.power);
@@ -165,17 +159,6 @@ wss.on("connection", (ws) => {
       else if (sp.type === "interrupt") {
         if (opp.casting) { opp.casting = null; ev.hit = true; ev.target = 1 - ws._idx; send(opp.ws, { t: "interrupted" }); }
         else ev.hit = false;
-      }
-      else if (sp.type === "reflect") {
-        me.reflect = true;
-      }
-      else if (sp.type === "freeze") {
-        ev.target = 1 - ws._idx; ev.ms = sp.ms;
-        send(opp.ws, { t: "frozen", ms: sp.ms });
-      }
-      else if (sp.type === "scramble") {
-        ev.target = 1 - ws._idx; ev.ms = sp.ms;
-        send(opp.ws, { t: "scrambled", ms: sp.ms });
       }
 
       broadcast(r, ev);

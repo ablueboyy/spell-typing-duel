@@ -103,12 +103,11 @@
   .card .sname{font-weight:800; letter-spacing:1px; font-size:15px} .card .meta{color:var(--muted); margin-top:2px}
   .card .kind{float:right; font-size:10px; padding:1px 7px; border-radius:8px}
   .k-attack .sname{color:var(--gold)} .k-attack .kind{background:rgba(255,224,102,.14);color:var(--gold)}
-  .k-shield .sname{color:var(--cyan)} .k-shield .kind{background:rgba(33,230,255,.14);color:var(--cyan)}
-  .k-heal .sname{color:var(--green)} .k-heal .kind{background:rgba(57,255,158,.12);color:var(--green)}
-  .k-interrupt .sname{color:var(--orange)} .k-interrupt .kind{background:rgba(255,169,77,.15);color:var(--orange)}
-  .k-reflect .sname{color:var(--purple)} .k-reflect .kind{background:rgba(177,75,255,.16);color:var(--purple)}
   .k-freeze .sname{color:var(--ice)} .k-freeze .kind{background:rgba(159,232,255,.15);color:var(--ice)}
-  .k-scramble .sname{color:#c792ff} .k-scramble .kind{background:rgba(199,146,255,.16);color:#c792ff}
+  .k-tornado .sname{color:var(--green)} .k-tornado .kind{background:rgba(57,255,158,.14);color:var(--green)}
+  .k-tsunami .sname{color:#5aa9ff} .k-tsunami .kind{background:rgba(90,169,255,.16);color:#5aa9ff}
+  .k-heal .sname{color:#7CFF9B} .k-heal .kind{background:rgba(124,255,155,.12);color:#7CFF9B}
+  .k-interrupt .sname{color:var(--orange)} .k-interrupt .kind{background:rgba(255,169,77,.15);color:var(--orange)}
 
   .toolbar { margin-top:12px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; justify-content:center; }
   button { background:linear-gradient(180deg,#1c0d3e,#140828); color:var(--ink); border:1px solid #3a3568; border-radius:10px; padding:10px 16px; font-size:14px; letter-spacing:1px; cursor:pointer; transition:.12s; }
@@ -188,7 +187,7 @@
   <div class="console">
     <div class="state" id="stateLabel">待命 · 打出咒語名字</div>
     <div class="incant" id="incant"></div>
-    <div class="hint" id="hint">打咒語名字啟動,再把隨機咒文打完。對手讀咒你看得到:silence 打斷 / shield 開盾 / mirror 反彈 / frost 冰凍。</div>
+    <div class="hint" id="hint">打咒語名字啟動,再把隨機咒文打完。對手讀咒你看得到 —— 趁機用 silence 打斷他,或用 frost / tornado 干擾他打字。</div>
     <input id="type" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="在這裡打字…" disabled />
     <div class="toolbar">
       <span class="stat">WPM <b id="wpm">0</b></span>
@@ -245,31 +244,26 @@ function pickWords(count, bucket){ const pool=(WORDS[bucket]||FALLBACK[bucket]).
 function shuffle(arr, from){ for(let i=arr.length-1;i>(from||0);i--){ const j=(from||0)+Math.floor(Math.random()*(i-(from||0)+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; } }
 
 // ==================== 咒語 ====================
+// 數值和 server.js 的 SPELLS 必須一致;count = 要打幾段咒文,越強的咒打越久、越容易被 silence 打斷
 const SPELLS = [
-  { name:"spark",    zh:"火花",    type:"attack",    count:1, bucket:"short", power:8,  kind:"攻擊" },
-  { name:"fireball", zh:"火球術",  type:"attack",    count:3, bucket:"mid",   power:20, kind:"攻擊" },
-  { name:"meteor",   zh:"隕石術",  type:"attack",    count:5, bucket:"long",  power:46, kind:"攻擊" },
-  { name:"shield",   zh:"護盾",    type:"shield",    count:2, bucket:"short", power:30, kind:"護盾" },
-  { name:"heal",     zh:"治療",    type:"heal",      count:3, bucket:"mid",   power:26, kind:"補血" },
-  { name:"silence",  zh:"沉默/打斷", type:"interrupt", count:2, bucket:"mid",  power:0, kind:"打斷" },
-  { name:"mirror",   zh:"鏡壁/反彈", type:"reflect",   count:3, bucket:"mid",  power:0, kind:"反彈" },
-  { name:"frost",    zh:"冰凍",    type:"freeze",    count:3, bucket:"mid",   power:0, kind:"冰凍", ms:2500 },
-  { name:"scramble", zh:"混亂",    type:"scramble",  count:4, bucket:"long",  power:0, kind:"混亂", ms:3000 },
+  { name:"spark",   zh:"火花",   type:"attack",    count:2, bucket:"short", power:12, kind:"攻擊", cls:"k-attack"  },
+  { name:"frost",   zh:"冰霜",   type:"attack",    count:2, bucket:"mid",   power:8,  kind:"冰凍", cls:"k-freeze",   freeze:2200 },
+  { name:"tornado", zh:"龍捲風", type:"attack",    count:3, bucket:"mid",   power:15, kind:"混亂", cls:"k-tornado",  scramble:3000 },
+  { name:"tsunami", zh:"海嘯",   type:"attack",    count:5, bucket:"long",  power:40, kind:"重擊", cls:"k-tsunami" },
+  { name:"heal",    zh:"治療",   type:"heal",      count:3, bucket:"mid",   power:26, kind:"補血", cls:"k-heal"    },
+  { name:"silence", zh:"沉默",   type:"interrupt", count:2, bucket:"short", power:0,  kind:"打斷", cls:"k-interrupt" },
 ];
 const SPELL_MAP = Object.fromEntries(SPELLS.map(s => [s.name, s]));
-const KIND_CLASS = { attack:"k-attack", shield:"k-shield", heal:"k-heal", interrupt:"k-interrupt", reflect:"k-reflect", freeze:"k-freeze", scramble:"k-scramble" };
 
 // 每招專屬特效設定(強度越高、越大越震)
 const SPELL_FX = {
-  spark:    { shape:"orb",   size:4,  sp:22, color:"#7fdcff", core:"#ffffff", trail:["#7fdcff"], trailN:1, imp:{n:14,spd:5,ring:38,shake:5,colors:["#7fdcff","#ffffff"]} },
-  fireball: { shape:"orb",   size:8,  sp:15, color:"#ff5edb", core:"#ffe066", trail:["#ff7a3c","#ff5edb"], trailN:2, imp:{n:26,spd:6,ring:56,shake:9,colors:["#ff7a3c","#ff5edb","#ffe066"]} },
-  meteor:   { shape:"rock",  size:15, sp:11, color:"#ff3d6e", core:"#ffcf66", trail:["#7a6b6b","#ff3d6e"], trailN:2, smoke:true, spin:true, imp:{n:46,spd:8,ring:84,shake:16,colors:["#ff3d6e","#ffcf66","#ffffff"],flash:"#ff3d6e"} },
-  frost:    { shape:"shard", size:9,  sp:14, color:"#bfefff", core:"#ffffff", trail:["#bfefff","#7fdcff"], trailN:2, spin:true, imp:{n:26,spd:5,ring:56,shake:8,colors:["#bfefff","#ffffff","#7fdcff"]} },
-  scramble: { shape:"glitch",size:7,  sp:16, color:"#b14bff", core:"#39ff9e", trail:["#b14bff","#39ff9e","#ffe066","#ff2fb9"], trailN:3, imp:{n:30,spd:6,ring:50,shake:7,colors:["#b14bff","#39ff9e","#ffe066","#ff2fb9"]} },
-  silence:  { shape:"orb",   size:6,  sp:20, color:"#ffa94d", core:"#ffffff", trail:["#ffa94d"], trailN:1, imp:{n:18,spd:6,ring:46,shake:6,colors:["#ffa94d","#ffffff"]} },
+  spark:    { shape:"orb",    size:6,  sp:21, color:"#ffe066", core:"#ffffff", trail:["#ffe066","#ffa94d"], trailN:2, imp:{n:20,spd:6,ring:44,shake:7,colors:["#ffe066","#ffa94d","#ffffff"]} },
+  frost:    { shape:"shard",  size:9,  sp:15, color:"#bfefff", core:"#ffffff", trail:["#bfefff","#7fdcff"], trailN:2, spin:true, imp:{n:26,spd:5,ring:56,shake:8,colors:["#bfefff","#ffffff","#7fdcff"]} },
+  tornado:  { shape:"vortex", size:12, sp:14, color:"#39ff9e", core:"#eafcff", trail:["#39ff9e","#7fdcff","#b14bff"], trailN:3, spin:true, imp:{n:32,spd:6,ring:62,shake:10,colors:["#39ff9e","#7fdcff","#ffffff"]} },
+  tsunami:  { shape:"wave",   size:17, sp:10, color:"#2f8bff", core:"#ffffff", trail:["#2f8bff","#7fdcff","#ffffff"], trailN:3, foam:true, imp:{n:48,spd:8,ring:88,shake:16,colors:["#2f8bff","#7fdcff","#ffffff"],flash:"#2f8bff"} },
+  silence:  { shape:"orb",    size:6,  sp:20, color:"#ffa94d", core:"#ffffff", trail:["#ffa94d"], trailN:1, imp:{n:18,spd:6,ring:46,shake:6,colors:["#ffa94d","#ffffff"]} },
 };
 const castColor = n => (SPELL_FX[n] && SPELL_FX[n].color) || "#21e6ff";
-const ROCK = [[1,0],[0.55,0.6],[-0.2,0.9],[-0.9,0.35],[-0.7,-0.5],[0.1,-0.9],[0.8,-0.55]];
 
 const $ = id => document.getElementById(id);
 const input = $("type"), incantEl = $("incant");
@@ -303,8 +297,16 @@ function drawShot(s){
   fxc.shadowBlur=22; fxc.shadowColor=c.color;
   if(c.shape==="orb"){ fxc.fillStyle=c.color; fxc.beginPath(); fxc.arc(0,0,c.size,0,7); fxc.fill(); fxc.fillStyle=c.core; fxc.beginPath(); fxc.arc(0,0,c.size*0.45,0,7); fxc.fill(); }
   else if(c.shape==="shard"){ fxc.fillStyle=c.color; fxc.beginPath(); fxc.moveTo(0,-c.size); fxc.lineTo(c.size*0.55,0); fxc.lineTo(0,c.size); fxc.lineTo(-c.size*0.55,0); fxc.closePath(); fxc.fill(); fxc.fillStyle=c.core; fxc.beginPath(); fxc.arc(0,0,c.size*0.3,0,7); fxc.fill(); }
-  else if(c.shape==="rock"){ fxc.fillStyle="#2a1522"; fxc.strokeStyle=c.color; fxc.lineWidth=3; fxc.beginPath(); ROCK.forEach((p,i)=>{ const x=p[0]*c.size,y=p[1]*c.size; i?fxc.lineTo(x,y):fxc.moveTo(x,y); }); fxc.closePath(); fxc.fill(); fxc.stroke(); fxc.fillStyle=c.core; fxc.beginPath(); fxc.arc(0,0,c.size*0.35,0,7); fxc.fill(); }
-  else if(c.shape==="glitch"){ const off=c.size*0.6; fxc.globalAlpha=.9; fxc.fillStyle=c.color; fxc.fillRect(-c.size/2-off,-c.size/2,c.size,c.size); fxc.fillStyle="#39ff9e"; fxc.fillRect(-c.size/2+off,-c.size/2,c.size,c.size); fxc.fillStyle="#ffe066"; fxc.fillRect(-c.size/2,-c.size/2,c.size,c.size); fxc.globalAlpha=1; }
+  else if(c.shape==="vortex"){ // 龍捲風:三圈反向旋轉的弧
+    fxc.strokeStyle=c.color; fxc.lineWidth=2.5; fxc.lineCap="round";
+    for(let k=0;k<3;k++){ fxc.beginPath(); fxc.arc(0,0,c.size*(.42+k*.29), k*2.1, k*2.1+2.4); fxc.stroke(); }
+    fxc.fillStyle=c.core; fxc.beginPath(); fxc.arc(0,0,c.size*.22,0,7); fxc.fill(); }
+  else if(c.shape==="wave"){ // 海嘯:一道捲起的浪
+    fxc.fillStyle=c.color; fxc.beginPath(); fxc.moveTo(-c.size,c.size*.45);
+    fxc.quadraticCurveTo(-c.size*.35,-c.size*1.15, c.size,-c.size*.15);
+    fxc.quadraticCurveTo(c.size*.15, c.size*.25, -c.size, c.size*.45);
+    fxc.closePath(); fxc.fill();
+    fxc.fillStyle=c.core; fxc.beginPath(); fxc.arc(c.size*.55,-c.size*.3,c.size*.3,0,7); fxc.fill(); }
   fxc.restore();
 }
 
@@ -318,7 +320,7 @@ function draw(){
     if(d<c.sp){ s.onHit&&s.onHit(); shots.splice(i,1); continue; }
     s.x+=dx/d*c.sp; s.y+=dy/d*c.sp; s.ang+=c.spin?.25:0;
     for(let k=0;k<c.trailN;k++) particles.push({x:s.x+(Math.random()-.5)*4,y:s.y+(Math.random()-.5)*4,vx:0,vy:0,life:1,dec:.05,r:c.size*.5,color:pick(c.trail)});
-    if(c.smoke) particles.push({x:s.x,y:s.y,vx:(Math.random()-.5)*.4,vy:-.3,life:1,dec:.012,r:c.size*.7,color:"#5a4a5a",grow:.25});
+    if(c.foam) particles.push({x:s.x,y:s.y+(Math.random()-.5)*c.size,vx:(Math.random()-.5)*.5,vy:.25,life:1,dec:.014,r:c.size*.45,color:"#cfeaff",grow:.2});
     drawShot(s);
   }
   fxc.shadowBlur=10;
@@ -339,8 +341,11 @@ function draw(){
 
 // ==================== 咒語書 ====================
 function renderSpellbook(){ const sb=$("spellbook"); sb.innerHTML="";
-  for(const s of SPELLS){ const eff=s.type==="attack"?`${s.power} 傷`:s.type==="shield"?`+${s.power} 盾`:s.type==="heal"?`+${s.power} 血`:s.type==="interrupt"?"中斷對手":s.type==="reflect"?"反彈一次":s.type==="freeze"?`凍結 ${s.ms/1000}s`:`打亂 ${s.ms/1000}s`;
-    const d=document.createElement("div"); d.className="card "+KIND_CLASS[s.type];
+  for(const s of SPELLS){
+    const eff = s.type==="heal" ? `+${s.power} 血`
+              : s.type==="interrupt" ? "中斷對手讀咒"
+              : `${s.power} 傷` + (s.freeze?` · 凍結 ${s.freeze/1000}s`:"") + (s.scramble?` · 打亂 ${s.scramble/1000}s`:"");
+    const d=document.createElement("div"); d.className="card "+s.cls;
     d.innerHTML=`<span class="kind">${s.kind}</span><div class="sname">${s.name}</div><div>${s.zh}</div><div class="meta">${s.count} 字 · ${eff}</div>`; sb.appendChild(d); } }
 
 // ==================== 狀態 ====================
@@ -412,24 +417,20 @@ function onResolve(m){
   if(m.caster===(1-youIdx)) fxEndCast("foe");
 
   if(m.effect==="attack"){
-    const cfg=SPELL_FX[m.spell]||SPELL_FX.fireball, targetW=m.target===youIdx?"you":"foe";
-    if(m.reflected){
-      fxShot(casterW,oppW,cfg,()=>{ fxShieldDome(oppW,"#b14bff"); const p=posOf(oppW); ringAt(p.x,p.y,"#b14bff",50);
-        const back={shape:"orb",size:cfg.size,sp:cfg.sp,color:"#b14bff",core:"#e6c8ff",trail:["#b14bff"],trailN:1,spin:cfg.spin};
-        fxShot(oppW,casterW,back,()=>{ fxImpactCfg(casterW,{n:cfg.imp.n,spd:cfg.imp.spd,ring:cfg.imp.ring,shake:cfg.imp.shake,colors:["#b14bff","#e6c8ff"]}); floaty(casterW,`反彈 -${m.dmg}`,"#b14bff"); }); });
-      if(iAmCaster){ combo=0; $("combo").textContent=0; $("youCastLabel").innerHTML=`被鏡壁反彈,自傷 ${m.dmg}!`; }
-    } else {
-      fxShot(casterW,targetW,cfg,()=>{ fxImpactCfg(targetW,cfg.imp); floaty(targetW,`-${m.dmg}`, targetW==="you"?"#21e6ff":"#ff2fb9"); });
-      if(iAmCaster){ combo++; $("combo").textContent=combo; $("youCastLabel").innerHTML=`命中 <b>${m.dmg}</b> 傷害!連擊 x${combo}`; }
-    }
-  } else if(m.effect==="shield"){ fxShieldDome(casterW,"#21e6ff"); floaty(casterW,`+${m.value}🛡`,"#21e6ff"); if(iAmCaster) $("youCastLabel").innerHTML="護盾就緒,吸收接下來的傷害";
+    const cfg=SPELL_FX[m.spell]||SPELL_FX.spark, targetW=m.target===youIdx?"you":"foe";
+    fxShot(casterW,targetW,cfg,()=>{
+      fxImpactCfg(targetW,cfg.imp); floaty(targetW,`-${m.dmg}`, targetW==="you"?"#21e6ff":"#ff2fb9");
+      if(m.freeze)   setTimeout(()=>floaty(targetW,"❄ 冰凍","#bfefff"),240);
+      if(m.scramble) setTimeout(()=>floaty(targetW,"✦ 混亂","#39ff9e"),240);
+    });
+    if(iAmCaster){ combo++; $("combo").textContent=combo;
+      const extra = m.freeze?` 並凍結 ${m.freeze/1000}s`:m.scramble?` 並打亂對手咒文`:"";
+      $("youCastLabel").innerHTML=`命中 <b>${m.dmg}</b> 傷害${extra}!連擊 x${combo}`; }
   } else if(m.effect==="heal"){ fxHeal(casterW); floaty(casterW,`+${m.value}❤`,"#39ff9e"); if(iAmCaster) $("youCastLabel").innerHTML=`恢復 <b>${m.value}</b> 點生命`;
   } else if(m.effect==="interrupt"){
     if(m.hit){ fxShot(casterW,oppW,SPELL_FX.silence,()=>{ fxImpactCfg(oppW,SPELL_FX.silence.imp); floaty(oppW,"打斷!","#ffa94d"); if(oppOfCaster===youIdx) onInterrupted(); else clearOppCast(); }); if(iAmCaster) $("youCastLabel").innerHTML="成功打斷對手!"; }
     else if(iAmCaster) $("youCastLabel").innerHTML="對手沒在讀咒,打斷落空…";
-  } else if(m.effect==="reflect"){ floaty(casterW,"🪞 反彈","#b14bff"); if(iAmCaster) $("youCastLabel").innerHTML="架起鏡壁,反彈對手下一發攻擊";
-  } else if(m.effect==="freeze"){ const targetW=m.target===youIdx?"you":"foe"; fxShot(casterW,targetW,SPELL_FX.frost,()=>{ fxImpactCfg(targetW,SPELL_FX.frost.imp); floaty(targetW,"❄ 冰凍","#bfefff"); }); if(iAmCaster) $("youCastLabel").innerHTML="凍結對手 2.5 秒!";
-  } else if(m.effect==="scramble"){ const targetW=m.target===youIdx?"you":"foe"; fxShot(casterW,targetW,SPELL_FX.scramble,()=>{ fxImpactCfg(targetW,SPELL_FX.scramble.imp); floaty(targetW,"✦ 混亂","#c792ff"); }); if(iAmCaster) $("youCastLabel").innerHTML="打亂對手咒文!"; }
+  }
   updateWpm();
 }
 
@@ -447,14 +448,14 @@ function onScrambled(ms){ scrambledUntil=performance.now()+ms;
 // 它同時扮演「伺服器裁判」和「對手」,吐出的訊息格式和 server.js 一模一樣,
 // 所以上面所有畫面/特效程式碼一行都不用改。
 const SOLO = {
-  easy:   { nick:"見習魔像", perWord:1500, gap:[2600,3900], react:.20, unlock:{ fireball:2, meteor:6, mirror:5, frost:4, scramble:8 } },
-  normal: { nick:"闇影法師", perWord:1050, gap:[1700,2700], react:.45, unlock:{ fireball:1, meteor:4, mirror:3, frost:3, scramble:5 } },
-  hard:   { nick:"大魔導士", perWord:760,  gap:[1100,1900], react:.70, unlock:{ fireball:1, meteor:2, mirror:2, frost:2, scramble:3 } },
+  easy:   { nick:"見習魔像", perWord:1500, gap:[2600,3900], react:.20, unlock:{ frost:3, tornado:4, tsunami:6 } },
+  normal: { nick:"闇影法師", perWord:1050, gap:[1700,2700], react:.45, unlock:{ frost:2, tornado:2, tsunami:4 } },
+  hard:   { nick:"大魔導士", perWord:760,  gap:[1100,1900], react:.70, unlock:{ frost:1, tornado:1, tsunami:2 } },
 };
 let soloDiff="normal";
 
 function createSolo(key){
-  const D=SOLO[key]||SOLO.normal, MAXHP=100, CAP=80, TICK=90;
+  const D=SOLO[key]||SOLO.normal, MAXHP=100, TICK=90;
   let P, level, cast, nextAt, frozenUntil, slowUntil, over, alive=true;
   const now=()=>performance.now(), rnd=(a,b)=>a+Math.random()*(b-a);
   const mk=()=>({hp:MAXHP,max:MAXHP,shield:0,reflect:false,casting:null});
@@ -476,15 +477,17 @@ function createSolo(key){
     const ev={t:"resolve",caster:ci,spell:name,effect:sp.type};
     let dead=-1;
     if(sp.type==="attack"){
-      let ti=1-ci, reflected=false;
-      if(opp.reflect){ opp.reflect=false; reflected=true; ti=ci; }
-      const tp=P[ti]; let amt=sp.power;
-      if(tp.shield>0){ const ab=Math.min(tp.shield,amt); tp.shield-=ab; amt-=ab; }
-      tp.hp=Math.max(0,tp.hp-amt);
-      ev.dmg=sp.power; ev.reflected=reflected; ev.target=ti;
+      const ti=1-ci, tp=P[ti];
+      tp.hp=Math.max(0,tp.hp-sp.power);
+      ev.dmg=sp.power; ev.target=ti;
       if(tp.hp<=0) dead=ti;
+      else {
+        if(sp.freeze){ ev.freeze=sp.freeze;
+          if(ti===1) frozenUntil=now()+sp.freeze; else emit({t:"frozen",ms:sp.freeze}); }
+        if(sp.scramble){ ev.scramble=sp.scramble;
+          if(ti===1) slowUntil=now()+sp.scramble; else emit({t:"scrambled",ms:sp.scramble}); }
+      }
     }
-    else if(sp.type==="shield"){ me.shield=Math.min(CAP,me.shield+sp.power); ev.value=sp.power; }
     else if(sp.type==="heal"){ const b=me.hp; me.hp=Math.min(me.max,me.hp+sp.power); ev.value=me.hp-b; }
     else if(sp.type==="interrupt"){
       const busy = ci===0 ? !!cast : !!P[0].casting;
@@ -492,12 +495,6 @@ function createSolo(key){
         if(ci===0){ cast=null; P[1].casting=null; nextAt=now()+1400; }
         else { P[0].casting=null; emit({t:"interrupted"}); }
       } else ev.hit=false;
-    }
-    else if(sp.type==="reflect"){ me.reflect=true; }
-    else if(sp.type==="freeze" || sp.type==="scramble"){
-      ev.target=1-ci; ev.ms=sp.ms;
-      if(ci===0){ if(sp.type==="freeze") frozenUntil=now()+sp.ms; else slowUntil=now()+sp.ms; }
-      else emit({t:sp.type==="freeze"?"frozen":"scrambled",ms:sp.ms});
     }
     emit(ev); emit({t:"state",you:pub(P[0]),opp:pub(P[1])});
     if(dead>=0){ over=true; emit({t:"gameover",win:dead===1}); }
@@ -507,14 +504,11 @@ function createSolo(key){
   function aiPick(){
     const u=D.unlock;
     if(P[0].casting && Math.random()<D.react) return "silence";          // 抓你讀咒的空檔打斷
-    if(P[1].hp<45 && Math.random()<.4) return "heal";
-    if(P[1].shield<=0 && P[1].hp<75 && Math.random()<.25) return "shield";
+    if(P[1].hp<45 && Math.random()<.45) return "heal";
     const r=Math.random();
-    if(level>=u.frost && r<.12) return "frost";
-    if(level>=u.scramble && r<.22) return "scramble";
-    if(level>=u.mirror && r<.32 && !P[1].reflect) return "mirror";
-    if(level>=u.meteor && Math.random()<.45) return "meteor";
-    if(level>=u.fireball && Math.random()<.7) return "fireball";
+    if(level>=u.frost   && r<.18) return "frost";
+    if(level>=u.tornado && r<.38) return "tornado";
+    if(level>=u.tsunami && Math.random()<.45) return "tsunami";
     return "spark";
   }
   function aiStart(name){
