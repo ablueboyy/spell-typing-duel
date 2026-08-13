@@ -125,6 +125,10 @@
   .row { display:flex; gap:8px; } .row input{flex:1}
   .lobby button { width:100%; margin-top:10px; padding:12px; font-size:15px; }
   #quickBtn { background:linear-gradient(90deg,var(--cyan),var(--purple)); color:#08111a; font-weight:800; border:none; box-shadow:0 0 22px rgba(33,230,255,.4); }
+  #soloBtn { background:linear-gradient(90deg,var(--purple),var(--magenta)); color:#fff; font-weight:800; border:none; box-shadow:0 0 22px rgba(177,75,255,.4); }
+  .difrow { display:flex; gap:8px; }
+  .difrow button { flex:1; margin-top:6px; padding:9px 0; font-size:13px; }
+  .difrow button.on { border-color:var(--purple); color:#fff; background:linear-gradient(180deg,#2b0f55,#180a34); box-shadow:0 0 16px rgba(177,75,255,.35); }
   .divider { color:var(--dim); font-size:12px; margin:14px 0 4px; letter-spacing:2px; }
   .lobbyMsg { min-height:20px; color:var(--gold); font-size:14px; margin-top:12px; }
   .code-pill { display:inline-block; background:#0a0420; border:1px solid var(--cyan); border-radius:8px; padding:4px 14px; font-size:22px; letter-spacing:5px; color:var(--cyan); margin:6px 0; text-shadow:0 0 12px var(--cyan); }
@@ -147,7 +151,7 @@
 </head>
 <body>
   <h1>咒語對決</h1>
-  <div class="sub">NEON SPELL DUEL · 線上對戰 — <a href="practice.html">單人練習 →</a></div>
+  <div class="sub">NEON SPELL DUEL · 線上雙人對戰 / 單人挑戰 AI</div>
 
   <div class="arena" id="arena">
     <div class="sun"></div>
@@ -206,6 +210,13 @@
         <input type="text" id="roomInput" maxlength="12" placeholder="房號(例如 abc)">
         <button id="joinBtn" style="width:auto; margin-top:0;">加入 / 建立</button>
       </div>
+      <div class="divider">— 或單人挑戰 AI —</div>
+      <div class="difrow" id="diffRow">
+        <button type="button" class="diff" data-d="easy">簡單</button>
+        <button type="button" class="diff on" data-d="normal">普通</button>
+        <button type="button" class="diff" data-d="hard">困難</button>
+      </div>
+      <button id="soloBtn">🤖 開始單人對戰</button>
       <div class="lobbyMsg" id="lobbyMsg"></div>
     </div>
   </div>
@@ -242,8 +253,8 @@ const SPELLS = [
   { name:"heal",     zh:"治療",    type:"heal",      count:3, bucket:"mid",   power:26, kind:"補血" },
   { name:"silence",  zh:"沉默/打斷", type:"interrupt", count:2, bucket:"mid",  power:0, kind:"打斷" },
   { name:"mirror",   zh:"鏡壁/反彈", type:"reflect",   count:3, bucket:"mid",  power:0, kind:"反彈" },
-  { name:"frost",    zh:"冰凍",    type:"freeze",    count:3, bucket:"mid",   power:0, kind:"冰凍" },
-  { name:"scramble", zh:"混亂",    type:"scramble",  count:4, bucket:"long",  power:0, kind:"混亂" },
+  { name:"frost",    zh:"冰凍",    type:"freeze",    count:3, bucket:"mid",   power:0, kind:"冰凍", ms:2500 },
+  { name:"scramble", zh:"混亂",    type:"scramble",  count:4, bucket:"long",  power:0, kind:"混亂", ms:3000 },
 ];
 const SPELL_MAP = Object.fromEntries(SPELLS.map(s => [s.name, s]));
 const KIND_CLASS = { attack:"k-attack", shield:"k-shield", heal:"k-heal", interrupt:"k-interrupt", reflect:"k-reflect", freeze:"k-freeze", scramble:"k-scramble" };
@@ -328,22 +339,29 @@ function draw(){
 
 // ==================== 咒語書 ====================
 function renderSpellbook(){ const sb=$("spellbook"); sb.innerHTML="";
-  for(const s of SPELLS){ const eff=s.type==="attack"?`${s.power} 傷`:s.type==="shield"?`+${s.power} 盾`:s.type==="heal"?`+${s.power} 血`:s.type==="interrupt"?"中斷對手":s.type==="reflect"?"反彈一次":s.type==="freeze"?"凍結 2.5s":"打亂 3s";
+  for(const s of SPELLS){ const eff=s.type==="attack"?`${s.power} 傷`:s.type==="shield"?`+${s.power} 盾`:s.type==="heal"?`+${s.power} 血`:s.type==="interrupt"?"中斷對手":s.type==="reflect"?"反彈一次":s.type==="freeze"?`凍結 ${s.ms/1000}s`:`打亂 ${s.ms/1000}s`;
     const d=document.createElement("div"); d.className="card "+KIND_CLASS[s.type];
     d.innerHTML=`<span class="kind">${s.kind}</span><div class="sname">${s.name}</div><div>${s.zh}</div><div class="meta">${s.count} 字 · ${eff}</div>`; sb.appendChild(d); } }
 
 // ==================== 狀態 ====================
-let ws=null, youIdx=0, running=false;
+// net 是「和裁判講話」的管道:線上模式接 WebSocket,單人模式接本機 AI 引擎,兩邊協定完全相同。
+let net=null, solo=false, youIdx=0, running=false;
 let mode="idle", spell=null, words=[], wordIndex=0, errFlag=false, oppCast=null;
 let combo=0, hits=0, misses=0, typedChars=0, startTime=0;
 let scrambledUntil=0, frozenTimer=null;
 
+function send(o){ if(net) net.send(o); }
+
 function connect(room){ const name=$("nameInput").value.trim(); const proto=location.protocol==="https:"?"wss":"ws";
-  ws=new WebSocket(`${proto}://${location.host}`);
-  ws.onopen=()=>ws.send(JSON.stringify({t:"join",room,name}));
-  ws.onmessage=e=>handle(JSON.parse(e.data));
-  ws.onclose=()=>{ if(running) $("connText").textContent="已斷線"; };
-  ws.onerror=()=>$("lobbyMsg").textContent="連線失敗,請確認伺服器已啟動。"; }
+  const sock=new WebSocket(`${proto}://${location.host}`);
+  sock.onopen=()=>sock.send(JSON.stringify({t:"join",room,name}));
+  sock.onmessage=e=>handle(JSON.parse(e.data));
+  sock.onclose=()=>{ if(running) $("connText").textContent="已斷線"; };
+  sock.onerror=()=>$("lobbyMsg").textContent="連線失敗,請確認伺服器已啟動。";
+  solo=false; $("leaveBtn").textContent="離開房間";
+  net={ send:o=>{ if(sock.readyState===1) sock.send(JSON.stringify(o)); }, close:()=>sock.close() }; }
+
+function startSolo(){ solo=true; $("leaveBtn").textContent="結束練習"; $("lobbyMsg").textContent=""; net=createSolo(soloDiff); }
 
 function handle(m){ switch(m.t){
   case "waiting": $("lobbyMsg").innerHTML=m.code?`房間已建立,把房號給朋友:<br><span class="code-pill">${m.code}</span><br>等待對手加入…`:"配對中,等待對手…"; break;
@@ -358,6 +376,7 @@ function handle(m){ switch(m.t){
   case "scrambled": onScrambled(m.ms); break;
   case "gameover": onGameover(m.win); break;
   case "oppLeft": onOppLeft(); break;
+  case "info": $("connText").textContent=m.text; break;
   case "oppWantsRematch": $("rematchMsg").textContent="對手想再來一場!"; break; } }
 
 function onStart(m){ youIdx=m.youIdx; running=true;
@@ -424,6 +443,120 @@ function onScrambled(ms){ scrambledUntil=performance.now()+ms;
   incantEl.classList.add("glitch"); setState("✦ 咒文被打亂!");
   setTimeout(()=>{ incantEl.classList.remove("glitch"); if(running && mode!=="casting") setState("待命 · 打出咒語名字"); }, ms); }
 
+// ==================== 單人模式:本機 AI 引擎 ====================
+// 它同時扮演「伺服器裁判」和「對手」,吐出的訊息格式和 server.js 一模一樣,
+// 所以上面所有畫面/特效程式碼一行都不用改。
+const SOLO = {
+  easy:   { nick:"見習魔像", perWord:1500, gap:[2600,3900], react:.20, unlock:{ fireball:2, meteor:6, mirror:5, frost:4, scramble:8 } },
+  normal: { nick:"闇影法師", perWord:1050, gap:[1700,2700], react:.45, unlock:{ fireball:1, meteor:4, mirror:3, frost:3, scramble:5 } },
+  hard:   { nick:"大魔導士", perWord:760,  gap:[1100,1900], react:.70, unlock:{ fireball:1, meteor:2, mirror:2, frost:2, scramble:3 } },
+};
+let soloDiff="normal";
+
+function createSolo(key){
+  const D=SOLO[key]||SOLO.normal, MAXHP=100, CAP=80, TICK=90;
+  let P, level, cast, nextAt, frozenUntil, slowUntil, over, alive=true;
+  const now=()=>performance.now(), rnd=(a,b)=>a+Math.random()*(b-a);
+  const mk=()=>({hp:MAXHP,max:MAXHP,shield:0,reflect:false,casting:null});
+  const pub=p=>({hp:p.hp,max:p.max,shield:p.shield,reflect:p.reflect});
+  // 非同步送出,行為和真的網路訊息一致(避免在施法函式中途重入)
+  const emit=o=>{ if(alive) setTimeout(()=>{ if(alive) handle(o); },0); };
+  const info=()=>emit({t:"info",text:`🤖 ${D.nick} · Lv${level}`});
+
+  function begin(){
+    P=[mk(),mk()]; level=1; cast=null; over=false; frozenUntil=0; slowUntil=0;
+    nextAt=now()+rnd(D.gap[0],D.gap[1])+900;
+    emit({t:"start",youIdx:0,you:pub(P[0]),opp:pub(P[1]),oppName:`${D.nick} Lv1`}); info();
+  }
+
+  // ---- 裁判:結算規則和 server.js 對齊 ----
+  function resolve(ci,name){
+    const sp=SPELL_MAP[name]; if(!sp) return;
+    const me=P[ci], opp=P[1-ci];
+    const ev={t:"resolve",caster:ci,spell:name,effect:sp.type};
+    let dead=-1;
+    if(sp.type==="attack"){
+      let ti=1-ci, reflected=false;
+      if(opp.reflect){ opp.reflect=false; reflected=true; ti=ci; }
+      const tp=P[ti]; let amt=sp.power;
+      if(tp.shield>0){ const ab=Math.min(tp.shield,amt); tp.shield-=ab; amt-=ab; }
+      tp.hp=Math.max(0,tp.hp-amt);
+      ev.dmg=sp.power; ev.reflected=reflected; ev.target=ti;
+      if(tp.hp<=0) dead=ti;
+    }
+    else if(sp.type==="shield"){ me.shield=Math.min(CAP,me.shield+sp.power); ev.value=sp.power; }
+    else if(sp.type==="heal"){ const b=me.hp; me.hp=Math.min(me.max,me.hp+sp.power); ev.value=me.hp-b; }
+    else if(sp.type==="interrupt"){
+      const busy = ci===0 ? !!cast : !!P[0].casting;
+      if(busy){ ev.hit=true; ev.target=1-ci;
+        if(ci===0){ cast=null; P[1].casting=null; nextAt=now()+1400; }
+        else { P[0].casting=null; emit({t:"interrupted"}); }
+      } else ev.hit=false;
+    }
+    else if(sp.type==="reflect"){ me.reflect=true; }
+    else if(sp.type==="freeze" || sp.type==="scramble"){
+      ev.target=1-ci; ev.ms=sp.ms;
+      if(ci===0){ if(sp.type==="freeze") frozenUntil=now()+sp.ms; else slowUntil=now()+sp.ms; }
+      else emit({t:sp.type==="freeze"?"frozen":"scrambled",ms:sp.ms});
+    }
+    emit(ev); emit({t:"state",you:pub(P[0]),opp:pub(P[1])});
+    if(dead>=0){ over=true; emit({t:"gameover",win:dead===1}); }
+  }
+
+  // ---- 對手 AI ----
+  function aiPick(){
+    const u=D.unlock;
+    if(P[0].casting && Math.random()<D.react) return "silence";          // 抓你讀咒的空檔打斷
+    if(P[1].hp<45 && Math.random()<.4) return "heal";
+    if(P[1].shield<=0 && P[1].hp<75 && Math.random()<.25) return "shield";
+    const r=Math.random();
+    if(level>=u.frost && r<.12) return "frost";
+    if(level>=u.scramble && r<.22) return "scramble";
+    if(level>=u.mirror && r<.32 && !P[1].reflect) return "mirror";
+    if(level>=u.meteor && Math.random()<.45) return "meteor";
+    if(level>=u.fireball && Math.random()<.7) return "fireball";
+    return "spark";
+  }
+  function aiStart(name){
+    const s=SPELL_MAP[name];
+    const per=Math.max(360, D.perWord*(1-(level-1)*.045));   // 等級越高讀得越快
+    cast={ name, count:s.count, per, t:0, idx:0 }; P[1].casting=name;
+    emit({t:"oppCast",spell:name});
+  }
+  function tick(){
+    if(!alive||over) return;
+    const t=now();
+    if(cast){
+      let dt=TICK;
+      if(t<frozenUntil) dt=0;             // 被你冰凍 → 讀條完全停住
+      else if(t<slowUntil) dt*=.45;       // 被你混亂 → 讀條變慢
+      cast.t+=dt;
+      const idx=Math.min(cast.count,Math.floor(cast.t/cast.per));
+      if(idx!==cast.idx){ cast.idx=idx; emit({t:"oppProgress",index:idx}); }
+      if(cast.t>=cast.per*cast.count){
+        const name=cast.name; cast=null; P[1].casting=null;
+        resolve(1,name);
+        if(!over){ level=Math.min(9,level+1); info(); nextAt=now()+rnd(D.gap[0],D.gap[1]); }
+      }
+      return;
+    }
+    if(t<frozenUntil || t<nextAt) return;
+    aiStart(aiPick());
+  }
+
+  const timer=setInterval(tick,TICK);
+  begin();
+  return {
+    send(o){
+      if(!alive) return;
+      if(o.t==="castStart"){ if(!over) P[0].casting=o.spell; }
+      else if(o.t==="castComplete"){ if(!over && P[0].casting===o.spell){ P[0].casting=null; resolve(0,o.spell); } }
+      else if(o.t==="rematch"){ begin(); }
+    },
+    close(){ alive=false; clearInterval(timer); },
+  };
+}
+
 // ==================== 輸入 ====================
 input.addEventListener("input", ()=>{
   if(!running) return;
@@ -432,15 +565,15 @@ input.addEventListener("input", ()=>{
     if(raw.length>0 && !SPELLS.some(sp=>sp.name.startsWith(raw))){ input.classList.add("err"); setTimeout(()=>input.classList.remove("err"),180); input.value=""; } return; }
   const target=words[wordIndex];
   if(raw===target){ hits++; typedChars+=target.length; $("hits").textContent=hits; wordIndex++; input.value=""; errFlag=false;
-    ws.send(JSON.stringify({t:"progress",index:wordIndex})); if(wordIndex>=words.length) finishCast(); else renderIncant(); return; }
+    send({t:"progress",index:wordIndex}); if(wordIndex>=words.length) finishCast(); else renderIncant(); return; }
   if(!target.startsWith(raw)){ input.classList.add("err"); if(!errFlag){ misses++; $("misses").textContent=misses; combo=0; $("combo").textContent=0; errFlag=true; } } else errFlag=false;
   renderIncant();
 });
 function beginCast(s){ spell=s; words=pickWords(s.count,s.bucket); if(performance.now()<scrambledUntil && words.length>1) shuffle(words,0);
   mode="casting"; wordIndex=0; errFlag=false; input.value="";
   setState(`吟唱中 · ${s.name.toUpperCase()} (${s.zh})`); $("youCastLabel").innerHTML=`施放 <b>${s.name}</b> — 打完 ${s.count} 段咒文!`;
-  fxCast("you", castColor(s.name)); renderIncant(); ws.send(JSON.stringify({t:"castStart",spell:s.name})); }
-function finishCast(){ ws.send(JSON.stringify({t:"castComplete",spell:spell.name})); mode="idle"; spell=null; words=[]; wordIndex=0; errFlag=false; input.value=""; incantEl.innerHTML=""; fxEndCast("you"); setState("待命 · 打出咒語名字"); }
+  fxCast("you", castColor(s.name)); renderIncant(); send({t:"castStart",spell:s.name}); }
+function finishCast(){ send({t:"castComplete",spell:spell.name}); mode="idle"; spell=null; words=[]; wordIndex=0; errFlag=false; input.value=""; incantEl.innerHTML=""; fxEndCast("you"); setState("待命 · 打出咒語名字"); }
 function renderIncant(){ incantEl.innerHTML=""; if(mode!=="casting") return;
   const cur=input.value.toLowerCase().replace(/[^a-z]/g,""), target=words[wordIndex]||"", isPrefix=target.startsWith(cur);
   words.forEach((w,i)=>{ const span=document.createElement("span"); span.className="word";
@@ -452,12 +585,15 @@ function renderIncant(){ incantEl.innerHTML=""; if(mode!=="casting") return;
 
 function onGameover(win){ running=false; input.disabled=true; clearTimeout(frozenTimer); $("frost").classList.remove("show"); $("banner").className="banner show "+(win?"win":"lose"); $("bannerText").textContent=win?"勝利!":"落敗…"; $("rematchMsg").textContent=""; }
 function onOppLeft(){ running=false; input.disabled=true; clearTimeout(frozenTimer); $("frost").classList.remove("show"); $("banner").className="banner show win"; $("bannerText").textContent="對手離開了"; $("rematchMsg").textContent=""; $("rematchBtn").style.display="none"; }
-function backToLobby(){ if(ws){ ws.close(); ws=null; } running=false; input.disabled=true; clearTimeout(frozenTimer); $("frost").classList.remove("show"); $("banner").className="banner"; $("lobby").classList.remove("hide"); $("lobbyMsg").textContent=""; $("rematchBtn").style.display=""; }
+function backToLobby(){ if(net){ net.close(); net=null; } solo=false; running=false; input.disabled=true; clearTimeout(frozenTimer); $("frost").classList.remove("show"); $("banner").className="banner"; $("lobby").classList.remove("hide"); $("lobbyMsg").textContent=""; $("rematchBtn").style.display=""; }
 
 $("quickBtn").addEventListener("click",()=>{ $("lobbyMsg").textContent="連線中…"; connect(""); });
 $("joinBtn").addEventListener("click",()=>{ const room=$("roomInput").value.trim(); if(!room){ $("lobbyMsg").textContent="請輸入房號。"; return; } $("lobbyMsg").textContent="連線中…"; connect(room); });
 $("roomInput").addEventListener("keydown",e=>{ if(e.key==="Enter") $("joinBtn").click(); });
-$("rematchBtn").addEventListener("click",()=>{ if(ws){ ws.send(JSON.stringify({t:"rematch"})); $("rematchMsg").textContent="等待對手同意…"; } });
+$("soloBtn").addEventListener("click",startSolo);
+$("diffRow").addEventListener("click",e=>{ const b=e.target.closest("button[data-d]"); if(!b) return;
+  soloDiff=b.dataset.d; [...$("diffRow").children].forEach(x=>x.classList.toggle("on",x===b)); });
+$("rematchBtn").addEventListener("click",()=>{ if(net){ send({t:"rematch"}); if(!solo) $("rematchMsg").textContent="等待對手同意…"; } });
 $("backBtn").addEventListener("click",backToLobby);
 $("leaveBtn").addEventListener("click",backToLobby);
 document.addEventListener("keydown",()=>{ if(running && !input.disabled && document.activeElement!==input) input.focus(); });

@@ -35,7 +35,7 @@ function send(ws, obj) {
 }
 function pub(p) { return { hp: p.hp, max: p.max, shield: p.shield, reflect: p.reflect }; }
 function initPlayer(ws, name) {
-  return { ws, name: (name || "法師").slice(0, 16), hp: MAXHP, max: MAXHP, shield: 0, reflect: false, casting: null };
+  return { ws, name: (name || "法師").slice(0, 16), hp: MAXHP, max: MAXHP, shield: 0, reflect: false, casting: null, rematch: false };
 }
 function broadcast(r, obj) { r.players.forEach(p => send(p.ws, obj)); }
 function broadcastState(r) {
@@ -50,7 +50,13 @@ function startRoom(r) {
 }
 function endRoom(r, deadIdx) {
   r.started = false;
+  // 房間保留(房號不釋放),兩人都還連著就能直接再來一場;真正的清除在 close 事件
+  r.players.forEach(p => { p.rematch = false; p.casting = null; });
   r.players.forEach((p, i) => send(p.ws, { t: "gameover", win: i !== deadIdx }));
+}
+function closeRoom(r) {
+  r.started = false;
+  r.players.forEach(p => { if (p.ws) p.ws._room = null; });
   if (r.code) rooms.delete(r.code);
 }
 
@@ -98,9 +104,26 @@ wss.on("connection", (ws) => {
     }
 
     const r = ws._room;
-    if (!r || !r.started) return;
+    if (!r) return;
     const me = r.players[ws._idx];
     const opp = r.players[1 - ws._idx];
+    if (!me || !opp) return;
+
+    // 再來一場:只在「分出勝負後」處理,所以必須擺在 started 檢查之前
+    if (msg.t === "rematch") {
+      if (r.started) return;
+      if (!opp.ws || opp.ws.readyState !== 1) { send(ws, { t: "oppLeft" }); return; }
+      me.rematch = true;
+      if (r.players.every(p => p.rematch)) {
+        r.players.forEach(p => { p.hp = MAXHP; p.shield = 0; p.reflect = false; p.casting = null; p.rematch = false; });
+        startRoom(r);
+      } else {
+        send(opp.ws, { t: "oppWantsRematch" });
+      }
+      return;
+    }
+
+    if (!r.started) return;
 
     if (msg.t === "castStart") {
       const sp = SPELLS[msg.spell];
@@ -159,27 +182,16 @@ wss.on("connection", (ws) => {
       broadcastState(r);
       if (deadIdx >= 0) endRoom(r, deadIdx);
     }
-    else if (msg.t === "rematch") {
-      // 兩邊都要求就重置
-      me._rematch = true;
-      if (r.players.every(p => p._rematch)) {
-        r.players.forEach(p => { p.hp = MAXHP; p.shield = 0; p.reflect = false; p.casting = null; p._rematch = false; });
-        startRoom(r);
-      } else {
-        send(opp.ws, { t: "oppWantsRematch" });
-      }
-    }
   });
 
   ws.on("close", () => {
     if (quickWaiting === ws) quickWaiting = null;
     const r = ws._room;
-    if (r) {
-      const opp = r.players[1 - ws._idx];
-      if (opp && opp.ws) send(opp.ws, { t: "oppLeft" });
-      r.started = false;
-      if (r.code) rooms.delete(r.code);
-    }
+    ws._room = null;
+    if (!r) return;
+    const opp = r.players[1 - ws._idx];
+    if (opp && opp.ws && opp.ws !== ws) send(opp.ws, { t: "oppLeft" });
+    closeRoom(r);   // 少一個人房間就沒得玩了,這時才釋放房號
   });
 });
 
