@@ -246,13 +246,14 @@ function shuffle(arr, from){ for(let i=arr.length-1;i>(from||0);i--){ const j=(f
 // ==================== 咒語 ====================
 // 數值和 server.js 的 SPELLS 必須一致;count = 要打幾段咒文,越強的咒打越久、越容易被 silence 打斷
 const SPELLS = [
-  { name:"spark",   zh:"火花",   type:"attack",    count:2, bucket:"short", power:12, kind:"攻擊", cls:"k-attack"  },
-  { name:"frost",   zh:"冰霜",   type:"attack",    count:2, bucket:"mid",   power:8,  kind:"冰凍", cls:"k-freeze",   freeze:2200 },
-  { name:"tornado", zh:"龍捲風", type:"attack",    count:3, bucket:"mid",   power:15, kind:"混亂", cls:"k-tornado",  scramble:3000 },
-  { name:"tsunami", zh:"海嘯",   type:"attack",    count:5, bucket:"long",  power:40, kind:"重擊", cls:"k-tsunami" },
-  { name:"heal",    zh:"治療",   type:"heal",      count:3, bucket:"mid",   power:26, kind:"補血", cls:"k-heal"    },
+  { name:"spark",   zh:"火花",   type:"attack",    count:2, bucket:"short", power:11, kind:"攻擊", cls:"k-attack"  },
+  { name:"frost",   zh:"冰霜",   type:"attack",    count:2, bucket:"mid",   power:10, kind:"冰凍", cls:"k-freeze",   freeze:2000 },
+  { name:"tornado", zh:"龍捲風", type:"attack",    count:3, bucket:"mid",   power:22, kind:"混亂", cls:"k-tornado",  scramble:3000 },
+  { name:"tsunami", zh:"海嘯",   type:"attack",    count:4, bucket:"long",  power:44, kind:"重擊", cls:"k-tsunami" },
+  { name:"heal",    zh:"治療",   type:"heal",      count:3, bucket:"mid",   power:17, kind:"補血", cls:"k-heal"    },
   { name:"silence", zh:"沉默",   type:"interrupt", count:2, bucket:"short", power:0,  kind:"打斷", cls:"k-interrupt" },
 ];
+const FREEZE_IMMUNE = 10000;   // 中一次冰凍後的免疫時間(要和 server.js 一致)
 const SPELL_MAP = Object.fromEntries(SPELLS.map(s => [s.name, s]));
 
 // 每招專屬特效設定(強度越高、越大越震)
@@ -344,7 +345,8 @@ function renderSpellbook(){ const sb=$("spellbook"); sb.innerHTML="";
   for(const s of SPELLS){
     const eff = s.type==="heal" ? `+${s.power} 血`
               : s.type==="interrupt" ? "中斷對手讀咒"
-              : `${s.power} 傷` + (s.freeze?` · 凍結 ${s.freeze/1000}s`:"") + (s.scramble?` · 打亂 ${s.scramble/1000}s`:"");
+              : `${s.power} 傷` + (s.freeze?` · 凍結 ${s.freeze/1000}s(對手 ${FREEZE_IMMUNE/1000}s 內免疫)`:"")
+                                + (s.scramble?` · 打亂 ${s.scramble/1000}s`:"");
     const d=document.createElement("div"); d.className="card "+s.cls;
     d.innerHTML=`<span class="kind">${s.kind}</span><div class="sname">${s.name}</div><div>${s.zh}</div><div class="meta">${s.count} 字 · ${eff}</div>`; sb.appendChild(d); } }
 
@@ -420,11 +422,12 @@ function onResolve(m){
     const cfg=SPELL_FX[m.spell]||SPELL_FX.spark, targetW=m.target===youIdx?"you":"foe";
     fxShot(casterW,targetW,cfg,()=>{
       fxImpactCfg(targetW,cfg.imp); floaty(targetW,`-${m.dmg}`, targetW==="you"?"#21e6ff":"#ff2fb9");
-      if(m.freeze)   setTimeout(()=>floaty(targetW,"❄ 冰凍","#bfefff"),240);
-      if(m.scramble) setTimeout(()=>floaty(targetW,"✦ 混亂","#39ff9e"),240);
+      if(m.freeze)       setTimeout(()=>floaty(targetW,"❄ 冰凍","#bfefff"),240);
+      if(m.freezeImmune) setTimeout(()=>floaty(targetW,"❄ 免疫","#8aa0d8"),240);
+      if(m.scramble)     setTimeout(()=>floaty(targetW,"✦ 混亂","#39ff9e"),240);
     });
     if(iAmCaster){ combo++; $("combo").textContent=combo;
-      const extra = m.freeze?` 並凍結 ${m.freeze/1000}s`:m.scramble?` 並打亂對手咒文`:"";
+      const extra = m.freeze?` 並凍結 ${m.freeze/1000}s`:m.freezeImmune?`(對手還在冰凍免疫中)`:m.scramble?` 並打亂對手咒文`:"";
       $("youCastLabel").innerHTML=`命中 <b>${m.dmg}</b> 傷害${extra}!連擊 x${combo}`; }
   } else if(m.effect==="heal"){ fxHeal(casterW); floaty(casterW,`+${m.value}❤`,"#39ff9e"); if(iAmCaster) $("youCastLabel").innerHTML=`恢復 <b>${m.value}</b> 點生命`;
   } else if(m.effect==="interrupt"){
@@ -458,7 +461,7 @@ function createSolo(key){
   const D=SOLO[key]||SOLO.normal, MAXHP=100, TICK=90;
   let P, level, cast, nextAt, frozenUntil, slowUntil, over, alive=true;
   const now=()=>performance.now(), rnd=(a,b)=>a+Math.random()*(b-a);
-  const mk=()=>({hp:MAXHP,max:MAXHP,shield:0,reflect:false,casting:null});
+  const mk=()=>({hp:MAXHP,max:MAXHP,shield:0,reflect:false,casting:null,immUntil:0});
   const pub=p=>({hp:p.hp,max:p.max,shield:p.shield,reflect:p.reflect});
   // 非同步送出,行為和真的網路訊息一致(避免在施法函式中途重入)
   const emit=o=>{ if(alive) setTimeout(()=>{ if(alive) handle(o); },0); };
@@ -482,8 +485,11 @@ function createSolo(key){
       ev.dmg=sp.power; ev.target=ti;
       if(tp.hp<=0) dead=ti;
       else {
-        if(sp.freeze){ ev.freeze=sp.freeze;
-          if(ti===1) frozenUntil=now()+sp.freeze; else emit({t:"frozen",ms:sp.freeze}); }
+        if(sp.freeze){
+          if(now()>=tp.immUntil){ tp.immUntil=now()+FREEZE_IMMUNE; ev.freeze=sp.freeze;
+            if(ti===1) frozenUntil=now()+sp.freeze; else emit({t:"frozen",ms:sp.freeze}); }
+          else ev.freezeImmune=true;
+        }
         if(sp.scramble){ ev.scramble=sp.scramble;
           if(ti===1) slowUntil=now()+sp.scramble; else emit({t:"scrambled",ms:sp.scramble}); }
       }
@@ -506,7 +512,8 @@ function createSolo(key){
     if(P[0].casting && Math.random()<D.react) return "silence";          // 抓你讀咒的空檔打斷
     if(P[1].hp<45 && Math.random()<.45) return "heal";
     const r=Math.random();
-    if(level>=u.frost   && r<.18) return "frost";
+    // 你還在冰凍免疫中的話,AI 不會浪費 frost
+    if(level>=u.frost   && r<.18 && now()>=P[0].immUntil) return "frost";
     if(level>=u.tornado && r<.38) return "tornado";
     if(level>=u.tsunami && Math.random()<.45) return "tsunami";
     return "spark";

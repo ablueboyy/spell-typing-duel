@@ -14,14 +14,16 @@ const wss = new WebSocketServer({ server });
 // ---- 咒語效果表(名稱必須和前端一致)----
 // 攻擊咒可以附帶 freeze(凍住對手輸入)或 scramble(打亂對手咒文)
 const SPELLS = {
-  spark:    { type: "attack",    power: 12 },
-  frost:    { type: "attack",    power: 8,  freeze: 2200 },
-  tornado:  { type: "attack",    power: 15, scramble: 3000 },
-  tsunami:  { type: "attack",    power: 40 },
-  heal:     { type: "heal",      power: 26 },
+  spark:    { type: "attack",    power: 11 },
+  frost:    { type: "attack",    power: 10, freeze: 2000 },
+  tornado:  { type: "attack",    power: 22, scramble: 3000 },
+  tsunami:  { type: "attack",    power: 44 },
+  heal:     { type: "heal",      power: 17 },
   silence:  { type: "interrupt", power: 0  },
 };
 const MAXHP = 100;
+// 中一次冰凍後的免疫時間。沒有這個,手速越快的人越會被無限凍結鎖死。
+const FREEZE_IMMUNE = 10000;
 
 // ---- 房間管理 ----
 const rooms = new Map();   // code -> room
@@ -32,7 +34,7 @@ function send(ws, obj) {
 }
 function pub(p) { return { hp: p.hp, max: p.max, shield: p.shield, reflect: p.reflect }; }
 function initPlayer(ws, name) {
-  return { ws, name: (name || "法師").slice(0, 16), hp: MAXHP, max: MAXHP, shield: 0, reflect: false, casting: null, rematch: false };
+  return { ws, name: (name || "法師").slice(0, 16), hp: MAXHP, max: MAXHP, shield: 0, reflect: false, casting: null, rematch: false, freezeImmUntil: 0 };
 }
 function broadcast(r, obj) { r.players.forEach(p => send(p.ws, obj)); }
 function broadcastState(r) {
@@ -112,7 +114,7 @@ wss.on("connection", (ws) => {
       if (!opp.ws || opp.ws.readyState !== 1) { send(ws, { t: "oppLeft" }); return; }
       me.rematch = true;
       if (r.players.every(p => p.rematch)) {
-        r.players.forEach(p => { p.hp = MAXHP; p.shield = 0; p.reflect = false; p.casting = null; p.rematch = false; });
+        r.players.forEach(p => { p.hp = MAXHP; p.shield = 0; p.reflect = false; p.casting = null; p.rematch = false; p.freezeImmUntil = 0; });
         startRoom(r);
       } else {
         send(opp.ws, { t: "oppWantsRematch" });
@@ -148,7 +150,14 @@ wss.on("connection", (ws) => {
         if (tp.hp <= 0) deadIdx = targetIdx;
         else {
           // 附帶效果:被打中的人才會收到
-          if (sp.freeze)   { ev.freeze = sp.freeze;     send(tp.ws, { t: "frozen",    ms: sp.freeze }); }
+          if (sp.freeze) {
+            const now = Date.now();
+            if (now >= tp.freezeImmUntil) {
+              tp.freezeImmUntil = now + FREEZE_IMMUNE;
+              ev.freeze = sp.freeze;
+              send(tp.ws, { t: "frozen", ms: sp.freeze });
+            } else ev.freezeImmune = true;   // 還在免疫中,只吃傷害
+          }
           if (sp.scramble) { ev.scramble = sp.scramble; send(tp.ws, { t: "scrambled", ms: sp.scramble }); }
         }
       }
