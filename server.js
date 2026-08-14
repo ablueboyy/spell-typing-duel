@@ -20,11 +20,14 @@ const SPELLS = {
   frost:    { type: "attack",    power: 10, freeze: 2000,   cd: 6000  },
   tornado:  { type: "attack",    power: 22, scramble: 3000, cd: 7000  },
   tsunami:  { type: "attack",    power: 44, cd: 12000 },
-  heal:     { type: "heal",      power: 17, cd: 10000 },
+  heal:     { type: "heal",      power: 40, cd: 18000 },
   silence:  { type: "interrupt", power: 0,  cd: 5000  },
 };
 const has = (name) => Object.prototype.hasOwnProperty.call(SPELLS, name);
-const MAXHP = 100;
+// 造型 id 白名單。前端拿到後會用它去組 SVG 的 href,所以不能讓任意字串轉發出去。
+const SKINS = new Set(["astral", "sylvan", "count", "fox", "toad", "abyss", "void", "pumpkin"]);
+const skinOf = (s) => (SKINS.has(s) ? s : "astral");
+const MAXHP = 150;
 // 中一次冰凍後的免疫時間。沒有這個,手速越快的人越會被無限凍結鎖死。
 const FREEZE_IMMUNE = 10000;
 
@@ -38,7 +41,7 @@ function send(ws, obj) {
 function pub(p) { return { hp: p.hp, max: p.max, shield: p.shield, reflect: p.reflect }; }
 function initPlayer(ws, name) {
   // cds: 咒語名 -> 可再次施放的時間戳
-  return { ws, name: (name || "法師").slice(0, 16), hp: MAXHP, max: MAXHP, shield: 0, reflect: false, casting: null, rematch: false, freezeImmUntil: 0, cds: {} };
+  return { ws, name: (name || "法師").slice(0, 16), skin: skinOf(ws._skin), hp: MAXHP, max: MAXHP, shield: 0, reflect: false, casting: null, rematch: false, freezeImmUntil: 0, cds: {} };
 }
 function broadcast(r, obj) { r.players.forEach(p => send(p.ws, obj)); }
 function broadcastState(r) {
@@ -48,7 +51,7 @@ function startRoom(r) {
   r.started = true;
   r.players.forEach((p, i) => {
     const opp = r.players[1 - i];
-    send(p.ws, { t: "start", youIdx: i, you: pub(p), opp: pub(opp), oppName: opp.name });
+    send(p.ws, { t: "start", youIdx: i, you: pub(p), opp: pub(opp), oppName: opp.name, oppSkin: opp.skin });
   });
 }
 function endRoom(r, deadIdx) {
@@ -70,6 +73,7 @@ wss.on("connection", (ws) => {
 
     if (msg.t === "join") {
       ws._name = (msg.name || "法師").slice(0, 16);
+      ws._skin = skinOf(msg.skin);
       const code = (msg.room || "").trim().toLowerCase();
 
       if (code) {
