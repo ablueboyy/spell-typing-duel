@@ -13,14 +13,17 @@ const wss = new WebSocketServer({ server });
 
 // ---- 咒語效果表(名稱必須和前端一致)----
 // 攻擊咒可以附帶 freeze(凍住對手輸入)或 scramble(打亂對手咒文)
+// cd = 施放成功後的冷卻(毫秒)。讀咒被打斷不算施放,所以不會進冷卻。
+// spark 的冷卻刻意壓很短:任何時候都要有招可以出,不然六招全冷卻只能乾等。
 const SPELLS = {
-  spark:    { type: "attack",    power: 11 },
-  frost:    { type: "attack",    power: 10, freeze: 2000 },
-  tornado:  { type: "attack",    power: 22, scramble: 3000 },
-  tsunami:  { type: "attack",    power: 44 },
-  heal:     { type: "heal",      power: 17 },
-  silence:  { type: "interrupt", power: 0  },
+  spark:    { type: "attack",    power: 11, cd: 1500  },
+  frost:    { type: "attack",    power: 10, freeze: 2000,   cd: 6000  },
+  tornado:  { type: "attack",    power: 22, scramble: 3000, cd: 7000  },
+  tsunami:  { type: "attack",    power: 44, cd: 12000 },
+  heal:     { type: "heal",      power: 17, cd: 10000 },
+  silence:  { type: "interrupt", power: 0,  cd: 5000  },
 };
+const has = (name) => Object.prototype.hasOwnProperty.call(SPELLS, name);
 const MAXHP = 100;
 // 中一次冰凍後的免疫時間。沒有這個,手速越快的人越會被無限凍結鎖死。
 const FREEZE_IMMUNE = 10000;
@@ -34,7 +37,8 @@ function send(ws, obj) {
 }
 function pub(p) { return { hp: p.hp, max: p.max, shield: p.shield, reflect: p.reflect }; }
 function initPlayer(ws, name) {
-  return { ws, name: (name || "法師").slice(0, 16), hp: MAXHP, max: MAXHP, shield: 0, reflect: false, casting: null, rematch: false, freezeImmUntil: 0 };
+  // cds: 咒語名 -> 可再次施放的時間戳
+  return { ws, name: (name || "法師").slice(0, 16), hp: MAXHP, max: MAXHP, shield: 0, reflect: false, casting: null, rematch: false, freezeImmUntil: 0, cds: {} };
 }
 function broadcast(r, obj) { r.players.forEach(p => send(p.ws, obj)); }
 function broadcastState(r) {
@@ -114,7 +118,7 @@ wss.on("connection", (ws) => {
       if (!opp.ws || opp.ws.readyState !== 1) { send(ws, { t: "oppLeft" }); return; }
       me.rematch = true;
       if (r.players.every(p => p.rematch)) {
-        r.players.forEach(p => { p.hp = MAXHP; p.shield = 0; p.reflect = false; p.casting = null; p.rematch = false; p.freezeImmUntil = 0; });
+        r.players.forEach(p => { p.hp = MAXHP; p.shield = 0; p.reflect = false; p.casting = null; p.rematch = false; p.freezeImmUntil = 0; p.cds = {}; });
         startRoom(r);
       } else {
         send(opp.ws, { t: "oppWantsRematch" });
@@ -125,8 +129,10 @@ wss.on("connection", (ws) => {
     if (!r.started) return;
 
     if (msg.t === "castStart") {
-      const sp = SPELLS[msg.spell];
-      if (!sp) return;
+      if (!has(msg.spell)) return;
+      // 冷卻中就不准起手。前端自己也會擋,這裡是給改過的客戶端看的。
+      const left = (me.cds[msg.spell] || 0) - Date.now();
+      if (left > 0) { send(ws, { t: "cdReject", spell: msg.spell, ms: left }); return; }
       me.casting = { spell: msg.spell };
       send(opp.ws, { t: "oppCast", spell: msg.spell });
     }
@@ -134,10 +140,12 @@ wss.on("connection", (ws) => {
       send(opp.ws, { t: "oppProgress", index: msg.index | 0 });
     }
     else if (msg.t === "castComplete") {
+      if (!has(msg.spell)) return;
       const sp = SPELLS[msg.spell];
-      if (!sp) return;
       if (!me.casting || me.casting.spell !== msg.spell) return; // 必須先 castStart
       me.casting = null;
+      // 冷卻從「施放成功」起算;被 silence 打斷的話不會走到這裡,所以不進冷卻。
+      if (sp.cd) { me.cds[msg.spell] = Date.now() + sp.cd; send(ws, { t: "cooldown", spell: msg.spell, ms: sp.cd }); }
 
       const ev = { t: "resolve", caster: ws._idx, spell: msg.spell, effect: sp.type };
       let deadIdx = -1;

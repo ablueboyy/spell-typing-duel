@@ -99,15 +99,36 @@
   input#type:disabled { opacity:.6; }
 
   .spellbook { width:min(940px,100%); margin-top:14px; display:grid; grid-template-columns:repeat(auto-fill,minmax(148px,1fr)); gap:10px; }
-  .card { background:rgba(14,6,32,.7); border:1px solid #2a2150; border-radius:11px; padding:9px 11px; font-size:12px; }
+  .card { position:relative; overflow:hidden; background:rgba(14,6,32,.7); border:1px solid #2a2150; border-radius:11px; padding:9px 11px; font-size:12px; transition:border-color .15s; }
   .card .sname{font-weight:800; letter-spacing:1px; font-size:15px} .card .meta{color:var(--muted); margin-top:2px}
   .card .kind{float:right; font-size:10px; padding:1px 7px; border-radius:8px}
+  /* 冷卻:整格從右邊被壓暗,亮起來的部分就是進度條 */
+  .card .cdmask { position:absolute; top:0; right:0; bottom:0; width:0%; pointer-events:none;
+    background:rgba(4,1,12,.82); border-left:1px solid rgba(33,230,255,.35); box-shadow:-6px 0 14px rgba(33,230,255,.18) inset; }
+  .card .cdnum { position:absolute; inset:0; display:none; align-items:center; justify-content:center; pointer-events:none;
+    font-size:23px; font-weight:900; letter-spacing:1px; color:#fff; text-shadow:0 0 12px var(--cyan),0 0 26px var(--cyan); }
+  .card.cooling .cdnum { display:flex; }
+  .card.cooling { border-color:#3a3568; }
+  .card.deny { animation:deny .32s; }
+  @keyframes deny { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-5px)} 45%{transform:translateX(5px)} 70%{transform:translateX(-3px)} }
   .k-attack .sname{color:var(--gold)} .k-attack .kind{background:rgba(255,224,102,.14);color:var(--gold)}
   .k-freeze .sname{color:var(--ice)} .k-freeze .kind{background:rgba(159,232,255,.15);color:var(--ice)}
   .k-tornado .sname{color:var(--green)} .k-tornado .kind{background:rgba(57,255,158,.14);color:var(--green)}
   .k-tsunami .sname{color:#5aa9ff} .k-tsunami .kind{background:rgba(90,169,255,.16);color:#5aa9ff}
   .k-heal .sname{color:#7CFF9B} .k-heal .kind{background:rgba(124,255,155,.12);color:#7CFF9B}
   .k-interrupt .sname{color:var(--orange)} .k-interrupt .kind{background:rgba(255,169,77,.15);color:var(--orange)}
+
+  /* 對手動態:貼著打字區,不用抬頭去看巫師那邊 */
+  .oppbar { display:flex; align-items:center; gap:10px; width:100%; max-width:520px; margin:10px auto 0;
+    padding:7px 12px; background:rgba(20,6,44,.5); border:1px solid #2a2150; border-radius:10px; font-size:13px; transition:.18s; }
+  .oppbar .ol { flex:none; color:var(--muted); font-size:11px; letter-spacing:2px; }
+  .oppbar .ot { flex:none; color:var(--muted); letter-spacing:1px; } .oppbar .ot b { color:var(--gold); }
+  .oppbar .obar { flex:1; height:7px; background:#0c0720; border:1px solid #2a2150; border-radius:5px; overflow:hidden; }
+  .oppbar .ofill { height:100%; width:0%; background:var(--oc,var(--magenta)); box-shadow:0 0 10px var(--oc,var(--magenta)); transition:width .12s linear; }
+  .oppbar.active { border-color:var(--magenta); background:rgba(58,8,44,.5); }
+  .oppbar.active .ot { color:var(--ink); }
+  .oppbar.danger { border-color:var(--bad); animation:opppulse .55s ease-in-out infinite; }
+  @keyframes opppulse { 0%,100%{box-shadow:0 0 14px rgba(255,46,99,.3)} 50%{box-shadow:0 0 30px rgba(255,46,99,.7)} }
 
   .toolbar { margin-top:12px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; justify-content:center; }
   button { background:linear-gradient(180deg,#1c0d3e,#140828); color:var(--ink); border:1px solid #3a3568; border-radius:10px; padding:10px 16px; font-size:14px; letter-spacing:1px; cursor:pointer; transition:.12s; }
@@ -187,8 +208,13 @@
   <div class="console">
     <div class="state" id="stateLabel">待命 · 打出咒語名字</div>
     <div class="incant" id="incant"></div>
-    <div class="hint" id="hint">打咒語名字啟動,再把隨機咒文打完。對手讀咒你看得到 —— 趁機用 silence 打斷他,或用 frost / tornado 干擾他打字。</div>
+    <div class="oppbar" id="oppBar">
+      <span class="ol">對手</span>
+      <span class="ot" id="oppCastText">待命中</span>
+      <div class="obar"><div class="ofill" id="oppCharge"></div></div>
+    </div>
     <input id="type" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="在這裡打字…" disabled />
+    <div class="hint" id="hint">打咒語名字啟動,再把隨機咒文打完。對手讀咒你看得到 —— 趁機用 silence 打斷他,或用 frost / tornado 干擾他打字。</div>
     <div class="toolbar">
       <span class="stat">WPM <b id="wpm">0</b></span>
       <span class="stat">命中 <b id="hits">0</b> · 失誤 <b id="misses">0</b></span>
@@ -245,13 +271,14 @@ function shuffle(arr, from){ for(let i=arr.length-1;i>(from||0);i--){ const j=(f
 
 // ==================== 咒語 ====================
 // 數值和 server.js 的 SPELLS 必須一致;count = 要打幾段咒文,越強的咒打越久、越容易被 silence 打斷
+// cd = 施放成功後的冷卻(毫秒),要調平衡改這裡和 server.js 兩邊
 const SPELLS = [
-  { name:"spark",   zh:"火花",   type:"attack",    count:2, bucket:"short", power:11, kind:"攻擊", cls:"k-attack"  },
-  { name:"frost",   zh:"冰霜",   type:"attack",    count:2, bucket:"mid",   power:10, kind:"冰凍", cls:"k-freeze",   freeze:2000 },
-  { name:"tornado", zh:"龍捲風", type:"attack",    count:3, bucket:"mid",   power:22, kind:"混亂", cls:"k-tornado",  scramble:3000 },
-  { name:"tsunami", zh:"海嘯",   type:"attack",    count:4, bucket:"long",  power:44, kind:"重擊", cls:"k-tsunami" },
-  { name:"heal",    zh:"治療",   type:"heal",      count:3, bucket:"mid",   power:17, kind:"補血", cls:"k-heal"    },
-  { name:"silence", zh:"沉默",   type:"interrupt", count:2, bucket:"short", power:0,  kind:"打斷", cls:"k-interrupt" },
+  { name:"spark",   zh:"火花",   type:"attack",    count:2, bucket:"short", power:11, cd:1500,  kind:"攻擊", cls:"k-attack"  },
+  { name:"frost",   zh:"冰霜",   type:"attack",    count:2, bucket:"mid",   power:10, cd:6000,  kind:"冰凍", cls:"k-freeze",   freeze:2000 },
+  { name:"tornado", zh:"龍捲風", type:"attack",    count:3, bucket:"mid",   power:22, cd:7000,  kind:"混亂", cls:"k-tornado",  scramble:3000 },
+  { name:"tsunami", zh:"海嘯",   type:"attack",    count:4, bucket:"long",  power:44, cd:12000, kind:"重擊", cls:"k-tsunami" },
+  { name:"heal",    zh:"治療",   type:"heal",      count:3, bucket:"mid",   power:17, cd:10000, kind:"補血", cls:"k-heal"    },
+  { name:"silence", zh:"沉默",   type:"interrupt", count:2, bucket:"short", power:0,  cd:5000,  kind:"打斷", cls:"k-interrupt" },
 ];
 const FREEZE_IMMUNE = 10000;   // 中一次冰凍後的免疫時間(要和 server.js 一致)
 const SPELL_MAP = Object.fromEntries(SPELLS.map(s => [s.name, s]));
@@ -343,9 +370,13 @@ function draw(){
   for(const w of ["you","foe"]) if(auras[w]){ const p=posOf(w), rr=30+Math.sin(t)*4; fxc.globalAlpha=.55; fxc.strokeStyle="#b14bff"; fxc.lineWidth=2; fxc.shadowBlur=16; fxc.shadowColor="#b14bff"; fxc.beginPath(); fxc.arc(p.x,p.y-6,rr,0,7); fxc.stroke(); }
   fxc.globalAlpha=1; fxc.shadowBlur=0; fxc.globalCompositeOperation="source-over";
   if(flashT>0){ fxc.globalAlpha=(flashT/flashMax)*0.5; fxc.fillStyle=flashColor; fxc.fillRect(0,0,W,H); fxc.globalAlpha=1; flashT--; }
+  tickCooldowns();
 }
 
-// ==================== 咒語書 ====================
+// ==================== 咒語書 + 冷卻 ====================
+const cdEls={};   // 咒語名 -> {card, mask, num}
+let cds={};       // 咒語名 -> 可再次施放的時間(performance.now 基準)
+
 function renderSpellbook(){ const sb=$("spellbook"); sb.innerHTML="";
   for(const s of SPELLS){
     const eff = s.type==="heal" ? `+${s.power} 血`
@@ -353,7 +384,27 @@ function renderSpellbook(){ const sb=$("spellbook"); sb.innerHTML="";
               : `${s.power} 傷` + (s.freeze?` · 凍結 ${s.freeze/1000}s(對手 ${FREEZE_IMMUNE/1000}s 內免疫)`:"")
                                 + (s.scramble?` · 打亂 ${s.scramble/1000}s`:"");
     const d=document.createElement("div"); d.className="card "+s.cls;
-    d.innerHTML=`<span class="kind">${s.kind}</span><div class="sname">${s.name}</div><div>${s.zh}</div><div class="meta">${s.count} 字 · ${eff}</div>`; sb.appendChild(d); } }
+    d.innerHTML=`<span class="kind">${s.kind}</span><div class="sname">${s.name}</div><div>${s.zh}</div>`
+      + `<div class="meta">${s.count} 字 · ${eff}</div><div class="meta">冷卻 ${s.cd/1000}s</div>`
+      + `<div class="cdmask"></div><div class="cdnum"></div>`;
+    cdEls[s.name]={ card:d, mask:d.querySelector(".cdmask"), num:d.querySelector(".cdnum") };
+    sb.appendChild(d); } }
+
+const onCd = n => performance.now() < (cds[n]||0);
+function startCooldown(name,ms){ cds[name]=performance.now()+ms; }
+function clearCooldowns(){ cds={}; for(const n in cdEls){ cdEls[n].card.classList.remove("cooling","deny"); cdEls[n].mask.style.width="0%"; cdEls[n].num.textContent=""; } }
+// 每幀更新冷卻遮罩。掛在既有的 draw() rAF 迴圈上,不另外開 timer。
+function tickCooldowns(){ const t=performance.now();
+  for(const s of SPELLS){ const e=cdEls[s.name]; if(!e) continue;
+    const left=(cds[s.name]||0)-t;
+    if(left<=0){ if(e.card.classList.contains("cooling")){ e.card.classList.remove("cooling"); e.mask.style.width="0%"; e.num.textContent=""; } continue; }
+    e.card.classList.add("cooling"); e.mask.style.width=Math.min(100,left/s.cd*100)+"%"; e.num.textContent=(left/1000).toFixed(1); } }
+// 冷卻中還想施放:卡片抖一下,順便告訴你還要等多久
+function denyCd(s){ const e=cdEls[s.name], left=Math.max(0,((cds[s.name]||0)-performance.now())/1000);
+  e.card.classList.remove("deny"); void e.card.offsetWidth; e.card.classList.add("deny");
+  input.classList.add("err"); setState(`${s.name.toUpperCase()} 冷卻中 · 還要 ${left.toFixed(1)} 秒`);
+  later(()=>{ input.classList.remove("err"); e.card.classList.remove("deny");
+    if(running && mode==="idle") setState("待命 · 打出咒語名字"); },700); }
 
 // ==================== 狀態 ====================
 // net 是「和裁判講話」的管道:線上模式接 WebSocket,單人模式接本機 AI 引擎,兩邊協定完全相同。
@@ -393,6 +444,8 @@ function handle(m){ switch(m.t){
   case "interrupted": onInterrupted(); break;
   case "frozen": onFrozen(m.ms); break;
   case "scrambled": onScrambled(m.ms); break;
+  case "cooldown": startCooldown(m.spell,m.ms); break;
+  case "cdReject": onCdReject(m); break;
   case "gameover": onGameover(m.win); break;
   case "oppLeft": onOppLeft(); break;
   case "info": $("connText").textContent=m.text; break;
@@ -405,7 +458,7 @@ function onStart(m){ gen++; youIdx=m.youIdx; running=true; fxReset();
   combo=0; hits=0; misses=0; typedChars=0; startTime=performance.now();
   $("combo").textContent=0; $("hits").textContent=0; $("misses").textContent=0; $("wpm").textContent=0;
   $("foeCharge").style.width="0%"; $("foeCastLabel").textContent="對手待命中…"; $("youCastLabel").textContent="打出咒語名字來啟動…";
-  fxEndCast("you"); fxEndCast("foe"); auras.you=auras.foe=false;
+  fxEndCast("you"); fxEndCast("foe"); auras.you=auras.foe=false; setOppBar(null); clearCooldowns();
   clearTimeout(frozenTimer); $("frost").classList.remove("show"); incantEl.classList.remove("glitch");
   incantEl.innerHTML=""; input.value=""; input.disabled=false; input.focus();
   applyState(m.you,m.opp); setState("待命 · 打出咒語名字"); }
@@ -421,14 +474,24 @@ function setState(t){ $("stateLabel").textContent=t; }
 function floaty(w,text,color){ const f=document.createElement("div"); f.className="floaty"; f.textContent=text; f.style.color=color; f.style.left="30%"; f.style.top="10%"; fighterOf(w).appendChild(f); setTimeout(()=>f.remove(),1000); }
 function updateWpm(){ const mins=(performance.now()-startTime)/60000; $("wpm").textContent=mins>0?Math.round((typedChars/5)/mins):0; }
 
-function onOppCast(name){ const s=SPELL_MAP[name]; oppCast={spell:name,index:0}; $("foeCastLabel").innerHTML=`讀取 <b>${name}</b> (${s?s.zh:""})…`; $("foeCharge").style.width="4%"; fxCast("foe", castColor(name)); }
-function onOppProgress(index){ if(!oppCast) return; oppCast.index=index; const s=SPELL_MAP[oppCast.spell], total=s?s.count:1; $("foeCharge").style.width=Math.min(100,index/total*100)+"%"; }
-function clearOppCast(){ oppCast=null; $("foeCharge").style.width="0%"; fxEndCast("foe"); }
+// 對手動態同時更新兩處:巫師上的小讀條(氣氛),以及打字區旁的 #oppBar(真正拿來反應的那個)
+function setOppBar(name,pct){ const bar=$("oppBar");
+  if(!name){ bar.className="oppbar"; $("oppCastText").textContent="待命中"; $("oppCharge").style.width="0%"; return; }
+  const s=SPELL_MAP[name];
+  bar.style.setProperty("--oc", castColor(name));
+  $("oppCastText").innerHTML=`讀取 <b>${name}</b>${s?" "+s.zh:""}`;
+  $("oppCharge").style.width=pct+"%";
+  bar.className="oppbar active"+(pct>=65?" danger":"");   // 快讀完了 → 轉紅閃爍,提醒你丟 silence
+}
+function onOppCast(name){ const s=SPELL_MAP[name]; oppCast={spell:name,index:0}; $("foeCastLabel").innerHTML=`讀取 <b>${name}</b> (${s?s.zh:""})…`; $("foeCharge").style.width="4%"; fxCast("foe", castColor(name)); setOppBar(name,4); }
+function onOppProgress(index){ if(!oppCast) return; oppCast.index=index; const s=SPELL_MAP[oppCast.spell], total=s?s.count:1;
+  const pct=Math.min(100,index/total*100); $("foeCharge").style.width=pct+"%"; setOppBar(oppCast.spell,pct); }
+function clearOppCast(){ oppCast=null; $("foeCharge").style.width="0%"; $("foeCastLabel").textContent="對手待命中…"; fxEndCast("foe"); setOppBar(null); }
 
 function onResolve(m){
   const iAmCaster=m.caster===youIdx, casterW=m.caster===youIdx?"you":"foe";
   const oppOfCaster=1-m.caster, oppW=oppOfCaster===youIdx?"you":"foe";
-  if(m.caster===(1-youIdx)) fxEndCast("foe");
+  if(m.caster===(1-youIdx)) clearOppCast();   // 對手讀完了,把讀條和對手動態列收掉
 
   if(m.effect==="attack"){
     const cfg=SPELL_FX[m.spell]||SPELL_FX.spark, targetW=m.target===youIdx?"you":"foe";
@@ -448,6 +511,13 @@ function onResolve(m){
   }
   updateWpm();
 }
+
+// 伺服器說這招還在冷卻。前端自己就會擋,所以正常玩不會走到這裡;
+// 萬一時鐘有落差對不上,就以伺服器為準把本地的讀咒收掉。
+function onCdReject(m){ startCooldown(m.spell,m.ms);
+  if(mode==="casting" && spell && spell.name===m.spell){
+    mode="idle"; spell=null; words=[]; wordIndex=0; errFlag=false; input.value=""; incantEl.innerHTML=""; fxEndCast("you");
+    setState("待命 · 打出咒語名字"); } }
 
 function onInterrupted(){ if(mode==="casting"){ mode="idle"; spell=null; words=[]; wordIndex=0; errFlag=false; input.value=""; incantEl.innerHTML=""; fxEndCast("you"); setState("待命 · 打出咒語名字"); $("youCastLabel").innerHTML="<b style='color:var(--bad)'>你的施法被打斷了!</b>"; input.classList.add("err"); setTimeout(()=>input.classList.remove("err"),300); } }
 
@@ -472,6 +542,7 @@ let soloDiff="normal";
 function createSolo(key){
   const D=SOLO[key]||SOLO.normal, MAXHP=100, TICK=90;
   let P, level, cast, nextAt, frozenUntil, slowUntil, over, alive=true;
+  let pcd, acd;   // 玩家 / AI 各自的冷卻表:咒語名 -> 可再次施放的時間
   const now=()=>performance.now(), rnd=(a,b)=>a+Math.random()*(b-a);
   const mk=()=>({hp:MAXHP,max:MAXHP,shield:0,reflect:false,casting:null,immUntil:0});
   const pub=p=>({hp:p.hp,max:p.max,shield:p.shield,reflect:p.reflect});
@@ -480,7 +551,7 @@ function createSolo(key){
   const info=()=>emit({t:"info",text:`🤖 ${D.nick} · Lv${level}`});
 
   function begin(){
-    P=[mk(),mk()]; level=1; cast=null; over=false; frozenUntil=0; slowUntil=0;
+    P=[mk(),mk()]; level=1; cast=null; over=false; frozenUntil=0; slowUntil=0; pcd={}; acd={};
     nextAt=now()+rnd(D.gap[0],D.gap[1])+900;
     emit({t:"start",youIdx:0,you:pub(P[0]),opp:pub(P[1]),oppName:`${D.nick} Lv1`}); info();
   }
@@ -489,6 +560,8 @@ function createSolo(key){
   function resolve(ci,name){
     const sp=SPELL_MAP[name]; if(!sp) return;
     const me=P[ci], opp=P[1-ci];
+    // 冷卻從施放成功起算(被打斷不會走到這裡),和 server.js 一致
+    if(sp.cd){ (ci===0?pcd:acd)[name]=now()+sp.cd; if(ci===0) emit({t:"cooldown",spell:name,ms:sp.cd}); }
     const ev={t:"resolve",caster:ci,spell:name,effect:sp.type};
     let dead=-1;
     if(sp.type==="attack"){
@@ -519,16 +592,17 @@ function createSolo(key){
   }
 
   // ---- 對手 AI ----
+  // 回傳要施放的咒;全部都在冷卻中就回 null,下一個 tick 再挑
   function aiPick(){
-    const u=D.unlock;
-    if(P[0].casting && Math.random()<D.react) return "silence";          // 抓你讀咒的空檔打斷
-    if(P[1].hp<45 && Math.random()<.45) return "heal";
+    const u=D.unlock, ready=n=>now()>=(acd[n]||0);
+    if(P[0].casting && ready("silence") && Math.random()<D.react) return "silence";   // 抓你讀咒的空檔打斷
+    if(P[1].hp<45 && ready("heal") && Math.random()<.45) return "heal";
     const r=Math.random();
     // 你還在冰凍免疫中的話,AI 不會浪費 frost
-    if(level>=u.frost   && r<.18 && now()>=P[0].immUntil) return "frost";
-    if(level>=u.tornado && r<.38) return "tornado";
-    if(level>=u.tsunami && Math.random()<.45) return "tsunami";
-    return "spark";
+    if(level>=u.frost   && ready("frost")   && r<.18 && now()>=P[0].immUntil) return "frost";
+    if(level>=u.tornado && ready("tornado") && r<.38) return "tornado";
+    if(level>=u.tsunami && ready("tsunami") && Math.random()<.45) return "tsunami";
+    return ready("spark") ? "spark" : null;
   }
   function aiStart(name){
     const s=SPELL_MAP[name];
@@ -554,7 +628,7 @@ function createSolo(key){
       return;
     }
     if(t<frozenUntil || t<nextAt) return;
-    aiStart(aiPick());
+    const next=aiPick(); if(next) aiStart(next);
   }
 
   const timer=setInterval(tick,TICK);
@@ -562,7 +636,10 @@ function createSolo(key){
   return {
     send(o){
       if(!alive) return;
-      if(o.t==="castStart"){ if(!over) P[0].casting=o.spell; }
+      if(o.t==="castStart"){ if(over) return;
+        const left=(pcd[o.spell]||0)-now();
+        if(left>0){ emit({t:"cdReject",spell:o.spell,ms:left}); return; }
+        P[0].casting=o.spell; }
       else if(o.t==="castComplete"){ if(!over && P[0].casting===o.spell){ P[0].casting=null; resolve(0,o.spell); } }
       else if(o.t==="rematch"){ begin(); }
     },
@@ -574,7 +651,7 @@ function createSolo(key){
 input.addEventListener("input", ()=>{
   if(!running) return;
   const raw=input.value.toLowerCase().replace(/[^a-z]/g,""); input.classList.remove("err");
-  if(mode==="idle"){ const s=SPELL_MAP[raw]; if(s){ beginCast(s); return; }
+  if(mode==="idle"){ const s=SPELL_MAP[raw]; if(s){ if(onCd(s.name)){ denyCd(s); input.value=""; return; } beginCast(s); return; }
     if(raw.length>0 && !SPELLS.some(sp=>sp.name.startsWith(raw))){ input.classList.add("err"); setTimeout(()=>input.classList.remove("err"),180); input.value=""; } return; }
   const target=words[wordIndex];
   if(raw===target){ hits++; typedChars+=target.length; $("hits").textContent=hits; wordIndex++; input.value=""; errFlag=false;
@@ -622,7 +699,7 @@ function onGameover(win){ running=false; input.disabled=true; mode="idle"; spell
   wait(); }
 function onOppLeft(){ gen++; running=false; input.disabled=true; clearTimeout(frozenTimer); $("frost").classList.remove("show"); $("banner").className="banner show win"; $("bannerText").textContent="對手離開了"; $("rematchMsg").textContent=""; $("rematchBtn").style.display="none"; }
 function backToLobby(){ gen++; closeNet(); solo=false; running=false; input.disabled=true; mode="idle"; spell=null; words=[]; wordIndex=0;
-  clearTimeout(frozenTimer); fxReset(); $("frost").classList.remove("show"); incantEl.classList.remove("glitch"); incantEl.innerHTML=""; input.value="";
+  clearTimeout(frozenTimer); fxReset(); clearCooldowns(); setOppBar(null); $("frost").classList.remove("show"); incantEl.classList.remove("glitch"); incantEl.innerHTML=""; input.value="";
   $("banner").className="banner"; $("lobby").classList.remove("hide"); $("lobbyMsg").textContent=""; $("rematchBtn").style.display=""; }
 
 $("quickBtn").addEventListener("click",()=>{ $("lobbyMsg").textContent="連線中…"; connect(""); });
