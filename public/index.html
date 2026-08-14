@@ -291,6 +291,11 @@ function fxShot(from,to,cfg,onHit){ const a=posOf(from), b=posOf(to); shots.push
 function fxImpactCfg(w,imp){ const p=posOf(w); burstC(p.x,p.y,imp.colors,imp.n,imp.spd); ringAt(p.x,p.y,imp.colors[0],imp.ring); if(imp.ring>60) ringAt(p.x,p.y,imp.colors[0],imp.ring*0.6); addShake(imp.shake); if(imp.flash){ flashT=flashMax=10; flashColor=imp.flash; } const s=avatarOf(w); s.classList.remove("hit"); void s.offsetWidth; s.classList.add("hit"); }
 function fxShieldDome(w,color){ shields.push({w,color,life:1,dec:.012}); }
 function fxHeal(w){ const p=posOf(w); for(let i=0;i<16;i++) particles.push({x:p.x+(Math.random()-.5)*44,y:p.y+20,vx:(Math.random()-.5)*.6,vy:-1.4-Math.random(),life:1,dec:.018,r:2+Math.random()*2,color:"#39ff9e"}); }
+// 換局/回大廳時把畫面上所有殘留特效清乾淨。
+// 沒有這個的話,上一局最後那發還在飛的咒會打進新的一局:雙方滿血卻螢幕震動 + 跳傷害數字。
+function fxReset(){ particles.length=0; shots.length=0; rings.length=0; shields.length=0;
+  auras.you=auras.foe=false; shake.t=0; flashT=0; arena.style.transform="";
+  document.querySelectorAll(".floaty").forEach(f=>f.remove()); }
 
 function drawShot(s){
   const c=s.cfg;
@@ -356,10 +361,17 @@ let net=null, solo=false, youIdx=0, running=false;
 let mode="idle", spell=null, words=[], wordIndex=0, errFlag=false, oppCast=null;
 let combo=0, hits=0, misses=0, typedChars=0, startTime=0;
 let scrambledUntil=0, frozenTimer=null;
+let gen=0;   // 局次:每開一局 +1,用來作廢上一局殘留的延遲 callback
 
 function send(o){ if(net) net.send(o); }
+// 一定要先關掉舊的連線再開新的。否則在大廳按過「快速配對」再改按房號/單人時,
+// 舊 socket 還掛在伺服器的 quickWaiting 裡等配對,而且 onmessage 還綁著同一個 handle(),
+// 之後有人配對到它,那條幽靈連線就會塞一個 start 進來,把你正在玩的盤面重置掉。
+function closeNet(){ if(net){ net.close(); net=null; } }
+// 帶局次的 setTimeout:跨局之後自動失效,免得上一局的字飄 / 解凍 / 解除混亂打到新的一局
+function later(fn,ms){ const g=gen; return setTimeout(()=>{ if(g===gen) fn(); },ms); }
 
-function connect(room){ const name=$("nameInput").value.trim(); const proto=location.protocol==="https:"?"wss":"ws";
+function connect(room){ closeNet(); const name=$("nameInput").value.trim(); const proto=location.protocol==="https:"?"wss":"ws";
   const sock=new WebSocket(`${proto}://${location.host}`);
   sock.onopen=()=>sock.send(JSON.stringify({t:"join",room,name}));
   sock.onmessage=e=>handle(JSON.parse(e.data));
@@ -368,7 +380,7 @@ function connect(room){ const name=$("nameInput").value.trim(); const proto=loca
   solo=false; $("leaveBtn").textContent="離開房間";
   net={ send:o=>{ if(sock.readyState===1) sock.send(JSON.stringify(o)); }, close:()=>sock.close() }; }
 
-function startSolo(){ solo=true; $("leaveBtn").textContent="結束練習"; $("lobbyMsg").textContent=""; net=createSolo(soloDiff); }
+function startSolo(){ closeNet(); solo=true; $("leaveBtn").textContent="結束練習"; $("lobbyMsg").textContent=""; net=createSolo(soloDiff); }
 
 function handle(m){ switch(m.t){
   case "waiting": $("lobbyMsg").innerHTML=m.code?`房間已建立,把房號給朋友:<br><span class="code-pill">${m.code}</span><br>等待對手加入…`:"配對中,等待對手…"; break;
@@ -386,7 +398,7 @@ function handle(m){ switch(m.t){
   case "info": $("connText").textContent=m.text; break;
   case "oppWantsRematch": $("rematchMsg").textContent="對手想再來一場!"; break; } }
 
-function onStart(m){ youIdx=m.youIdx; running=true;
+function onStart(m){ gen++; youIdx=m.youIdx; running=true; fxReset();
   $("lobby").classList.add("hide"); $("banner").className="banner"; fxResize();
   $("foeName").textContent=m.oppName||"對手"; $("connText").textContent="⚔ 對戰中"; $("rematchMsg").textContent="";
   mode="idle"; spell=null; words=[]; wordIndex=0; errFlag=false; oppCast=null; scrambledUntil=0;
@@ -422,9 +434,9 @@ function onResolve(m){
     const cfg=SPELL_FX[m.spell]||SPELL_FX.spark, targetW=m.target===youIdx?"you":"foe";
     fxShot(casterW,targetW,cfg,()=>{
       fxImpactCfg(targetW,cfg.imp); floaty(targetW,`-${m.dmg}`, targetW==="you"?"#21e6ff":"#ff2fb9");
-      if(m.freeze)       setTimeout(()=>floaty(targetW,"❄ 冰凍","#bfefff"),240);
-      if(m.freezeImmune) setTimeout(()=>floaty(targetW,"❄ 免疫","#8aa0d8"),240);
-      if(m.scramble)     setTimeout(()=>floaty(targetW,"✦ 混亂","#39ff9e"),240);
+      if(m.freeze)       later(()=>floaty(targetW,"❄ 冰凍","#bfefff"),240);
+      if(m.freezeImmune) later(()=>floaty(targetW,"❄ 免疫","#8aa0d8"),240);
+      if(m.scramble)     later(()=>floaty(targetW,"✦ 混亂","#39ff9e"),240);
     });
     if(iAmCaster){ combo++; $("combo").textContent=combo;
       const extra = m.freeze?` 並凍結 ${m.freeze/1000}s`:m.freezeImmune?`(對手還在冰凍免疫中)`:m.scramble?` 並打亂對手咒文`:"";
@@ -440,12 +452,12 @@ function onResolve(m){
 function onInterrupted(){ if(mode==="casting"){ mode="idle"; spell=null; words=[]; wordIndex=0; errFlag=false; input.value=""; incantEl.innerHTML=""; fxEndCast("you"); setState("待命 · 打出咒語名字"); $("youCastLabel").innerHTML="<b style='color:var(--bad)'>你的施法被打斷了!</b>"; input.classList.add("err"); setTimeout(()=>input.classList.remove("err"),300); } }
 
 function onFrozen(ms){ input.disabled=true; input.blur(); $("frost").classList.add("show"); setState("❄ 你被冰凍了!");
-  clearTimeout(frozenTimer); frozenTimer=setTimeout(()=>{ $("frost").classList.remove("show"); if(running){ input.disabled=false; input.focus(); setState(mode==="casting"?"吟唱中":"待命 · 打出咒語名字"); } }, ms); }
+  clearTimeout(frozenTimer); frozenTimer=later(()=>{ $("frost").classList.remove("show"); if(running){ input.disabled=false; input.focus(); setState(mode==="casting"?"吟唱中":"待命 · 打出咒語名字"); } }, ms); }
 
 function onScrambled(ms){ scrambledUntil=performance.now()+ms;
   if(mode==="casting" && words.length-wordIndex>1){ shuffle(words, wordIndex); renderIncant(); }
   incantEl.classList.add("glitch"); setState("✦ 咒文被打亂!");
-  setTimeout(()=>{ incantEl.classList.remove("glitch"); if(running && mode!=="casting") setState("待命 · 打出咒語名字"); }, ms); }
+  later(()=>{ incantEl.classList.remove("glitch"); if(running && mode!=="casting") setState("待命 · 打出咒語名字"); }, ms); }
 
 // ==================== 單人模式:本機 AI 引擎 ====================
 // 它同時扮演「伺服器裁判」和「對手」,吐出的訊息格式和 server.js 一模一樣,
@@ -570,6 +582,20 @@ input.addEventListener("input", ()=>{
   if(!target.startsWith(raw)){ input.classList.add("err"); if(!errFlag){ misses++; $("misses").textContent=misses; combo=0; $("combo").textContent=0; errFlag=true; } } else errFlag=false;
   renderIncant();
 });
+// ---- 禁止貼上 ----
+// 咒語名字和咒文都必須真的一個字一個字打出來,所以擋掉所有「不用打字」的輸入來源:
+// Ctrl+V、右鍵貼上、拖曳文字進來,以及 Linux 的中鍵貼上(primary selection)。
+// beforeinput 的 inputType 是最完整的一道:任何非鍵盤輸入都會標成下面這幾種。
+// 正常打字是 insertText、注音/日文輸入法是 insertCompositionText,都不在名單裡,不受影響。
+const NO_TYPE = new Set(["insertFromPaste","insertFromPasteAsQuotation","insertFromDrop","insertFromYank","insertReplacementText"]);
+input.addEventListener("beforeinput", e=>{ if(NO_TYPE.has(e.inputType)){ e.preventDefault(); rejectPaste(); } });
+input.addEventListener("paste", e=>{ e.preventDefault(); rejectPaste(); });
+input.addEventListener("drop",  e=>{ e.preventDefault(); rejectPaste(); });
+function rejectPaste(){ if(!running) return;
+  input.classList.add("err"); setState("✋ 不能貼上 · 咒語要自己打");
+  later(()=>{ input.classList.remove("err");
+    if(running) setState(mode==="casting" ? `吟唱中 · ${spell.name.toUpperCase()} (${spell.zh})` : "待命 · 打出咒語名字"); }, 900); }
+
 function beginCast(s){ spell=s; words=pickWords(s.count,s.bucket); if(performance.now()<scrambledUntil && words.length>1) shuffle(words,0);
   mode="casting"; wordIndex=0; errFlag=false; input.value="";
   setState(`吟唱中 · ${s.name.toUpperCase()} (${s.zh})`); $("youCastLabel").innerHTML=`施放 <b>${s.name}</b> — 打完 ${s.count} 段咒文!`;
@@ -584,9 +610,20 @@ function renderIncant(){ incantEl.innerHTML=""; if(mode!=="casting") return;
       const c=document.createElement("span"); c.className="cursor"; const r=document.createElement("span"); r.className="r"; r.textContent=w.slice(matched); span.append(g,c,r); }
     else span.textContent=w; incantEl.appendChild(span); }); }
 
-function onGameover(win){ running=false; input.disabled=true; clearTimeout(frozenTimer); $("frost").classList.remove("show"); $("banner").className="banner show "+(win?"win":"lose"); $("bannerText").textContent=win?"勝利!":"落敗…"; $("rematchMsg").textContent=""; }
-function onOppLeft(){ running=false; input.disabled=true; clearTimeout(frozenTimer); $("frost").classList.remove("show"); $("banner").className="banner show win"; $("bannerText").textContent="對手離開了"; $("rematchMsg").textContent=""; $("rematchBtn").style.display="none"; }
-function backToLobby(){ if(net){ net.close(); net=null; } solo=false; running=false; input.disabled=true; clearTimeout(frozenTimer); $("frost").classList.remove("show"); $("banner").className="banner"; $("lobby").classList.remove("hide"); $("lobbyMsg").textContent=""; $("rematchBtn").style.display=""; }
+function onGameover(win){ running=false; input.disabled=true; mode="idle"; spell=null; words=[]; wordIndex=0;
+  clearTimeout(frozenTimer); $("frost").classList.remove("show"); incantEl.classList.remove("glitch");
+  const g=gen, t0=performance.now();
+  const show=()=>{ if(g!==gen) return;   // 已經開新局或回大廳,就別再蓋畫面
+    $("banner").className="banner show "+(win?"win":"lose"); $("bannerText").textContent=win?"勝利!":"落敗…"; $("rematchMsg").textContent=""; };
+  // 伺服器 resolve 完馬上就送 gameover,但致命一擊還在飛(fxShot 要一秒多才到)。
+  // 先等它打到再跳結算,不然畫面會先出勝負、砲彈後到。1.8s 是保險上限。
+  const wait=()=>{ if(g!==gen) return;
+    if(shots.length && performance.now()-t0<1800) requestAnimationFrame(wait); else setTimeout(show,420); };
+  wait(); }
+function onOppLeft(){ gen++; running=false; input.disabled=true; clearTimeout(frozenTimer); $("frost").classList.remove("show"); $("banner").className="banner show win"; $("bannerText").textContent="對手離開了"; $("rematchMsg").textContent=""; $("rematchBtn").style.display="none"; }
+function backToLobby(){ gen++; closeNet(); solo=false; running=false; input.disabled=true; mode="idle"; spell=null; words=[]; wordIndex=0;
+  clearTimeout(frozenTimer); fxReset(); $("frost").classList.remove("show"); incantEl.classList.remove("glitch"); incantEl.innerHTML=""; input.value="";
+  $("banner").className="banner"; $("lobby").classList.remove("hide"); $("lobbyMsg").textContent=""; $("rematchBtn").style.display=""; }
 
 $("quickBtn").addEventListener("click",()=>{ $("lobbyMsg").textContent="連線中…"; connect(""); });
 $("joinBtn").addEventListener("click",()=>{ const room=$("roomInput").value.trim(); if(!room){ $("lobbyMsg").textContent="請輸入房號。"; return; } $("lobbyMsg").textContent="連線中…"; connect(room); });
