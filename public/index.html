@@ -219,6 +219,34 @@
   .lspell { font-size:11px; padding:4px 11px; border-radius:20px; border:1px solid #2a2150; background:rgba(10,4,32,.75); letter-spacing:1px; color:var(--muted); }
   .lspell .sname { font-weight:800; letter-spacing:1px; }
 
+  /* ===== 對戰前準備 ===== */
+  .readyscreen { position:fixed; inset:0; z-index:31; display:flex; align-items:center; justify-content:center;
+    background:rgba(4,2,12,.84); backdrop-filter:blur(6px); padding:20px; }
+  .readyscreen.hide { display:none; }
+  .rdy { width:min(560px,94%); text-align:center; padding:26px 22px; border:1px solid #2a2150; border-radius:18px;
+    background:linear-gradient(180deg,rgba(23,8,55,.94),rgba(10,4,32,.96)); box-shadow:0 20px 60px rgba(0,0,0,.6); }
+  .rdyhead { font-size:13px; letter-spacing:6px; color:var(--muted); margin-bottom:18px; }
+  .rdyvs { display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:20px; }
+  .rdyp { flex:1; padding:14px 8px; border-radius:14px; border:1px solid #2a2150; background:rgba(10,4,32,.7); transition:.18s; }
+  .rdyp svg { width:62px; height:78px; display:block; margin:0 auto; filter:drop-shadow(0 0 10px var(--sc,#21e6ff)); }
+  .rdynm { font-size:14px; font-weight:800; letter-spacing:2px; margin-top:6px; color:var(--ink); }
+  .rdystat { font-size:11px; letter-spacing:2px; margin-top:4px; color:var(--muted); }
+  .rdyp.ok { border-color:var(--sc,#39ff9e); box-shadow:0 0 24px -6px var(--sc,#39ff9e); }
+  .rdyp.ok .rdystat { color:var(--green); text-shadow:0 0 10px var(--green); }
+  .rdyx { font-size:20px; font-weight:900; letter-spacing:2px; color:var(--magenta); text-shadow:0 0 14px var(--magenta); }
+  #readyBtn { width:100%; padding:13px; font-size:15px; font-weight:800; letter-spacing:5px; border:none;
+    background:linear-gradient(90deg,var(--green),var(--cyan)); color:#062018; box-shadow:0 0 24px rgba(57,255,158,.35); }
+  #readyBtn:disabled { background:linear-gradient(90deg,#2a4a3c,#274a52); color:var(--muted); box-shadow:none; }
+  .rdyhint { color:var(--muted); font-size:11px; letter-spacing:1px; margin-top:11px; }
+  .rdyhint b { color:var(--gold); letter-spacing:3px; }
+
+  #countdown { position:fixed; inset:0; z-index:33; display:none; align-items:center; justify-content:center;
+    pointer-events:none; font-weight:900; letter-spacing:8px; color:#fff; font-size:clamp(72px,16vw,150px);
+    text-shadow:0 0 22px var(--cyan),0 0 55px var(--magenta); }
+  #countdown.show { display:flex; }
+  #countdown.pop { animation:cdpop .5s ease-out; }
+  @keyframes cdpop { 0%{transform:scale(.5); opacity:0} 30%{transform:scale(1.14); opacity:1} 100%{transform:scale(1); opacity:.92} }
+
   .banner { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(4,2,12,.85); backdrop-filter:blur(4px); z-index:35; }
   .banner.show { display:flex; }
   .banner h2 { font-size:48px; letter-spacing:8px; margin:0 0 10px; }
@@ -535,6 +563,21 @@
       <div class="lspells" id="lobbySpells"></div>
     </div>
   </div>
+
+  <div class="readyscreen hide" id="readyScreen">
+    <div class="rdy">
+      <div class="rdyhead">對 戰 前 準 備</div>
+      <div class="rdyvs">
+        <div class="rdyp" id="rdyYou"><div class="rdyav"></div><div class="rdynm"></div><div class="rdystat">未準備</div></div>
+        <div class="rdyx">VS</div>
+        <div class="rdyp" id="rdyFoe"><div class="rdyav"></div><div class="rdynm"></div><div class="rdystat">未準備</div></div>
+      </div>
+      <button id="readyBtn">準備好了</button>
+      <div class="rdyhint">也可以直接在鍵盤上打 <b>ready</b></div>
+    </div>
+  </div>
+
+  <div id="countdown"></div>
 
   <div class="banner" id="banner">
     <div style="text-align:center">
@@ -1001,6 +1044,8 @@ let mode="idle", spell=null, words=[], wordIndex=0, errFlag=false, oppCast=null;
 let combo=0, hits=0, misses=0, typedChars=0, startTime=0;
 let scrambledUntil=0, frozenTimer=null;
 let gen=0;   // 局次:每開一局 +1,用來作廢上一局殘留的延遲 callback
+let phase="idle";   // idle / ready / countdown / playing / over
+let meReady=false, readyBuf="", cdTimer=null, foeInfo={name:"對手",skin:"count"};
 
 function send(o){ if(net) net.send(o); }
 // 一定要先關掉舊的連線再開新的。否則在大廳按過「快速配對」再改按房號/單人時,
@@ -1024,6 +1069,9 @@ function startSolo(){ closeNet(); solo=true; $("leaveBtn").textContent="結束�
 function handle(m){ switch(m.t){
   case "waiting": $("lobbyMsg").innerHTML=m.code?`房間已建立,把房號給朋友:<br><span class="code-pill">${m.code}</span><br>等待對手加入…`:"配對中,等待對手…"; break;
   case "roomFull": $("lobbyMsg").textContent="這個房間已滿,換一個房號吧。"; break;
+  case "ready": onReady(m); break;
+  case "readyState": onReadyState(m); break;
+  case "countdown": onCountdown(m.ms); break;
   case "start": onStart(m); break;
   case "state": applyState(m.you,m.opp); break;
   case "oppCast": onOppCast(m.spell); break;
@@ -1039,7 +1087,55 @@ function handle(m){ switch(m.t){
   case "info": $("connText").textContent=m.text; break;
   case "oppWantsRematch": $("rematchMsg").textContent="對手想再來一場!"; break; } }
 
-function onStart(m){ gen++; youIdx=m.youIdx; running=true; fxReset();
+const myName = () => $("nameInput").value.trim() || "法師";
+function paintRdy(id,skin,name,ok){ const el=$(id);
+  el.style.setProperty("--sc",skin.color);
+  el.querySelector(".rdyav").innerHTML=`<svg viewBox="0 0 64 80"><use href="#sk-${skin.id}"/></svg>`;
+  el.querySelector(".rdynm").textContent=name;
+  el.querySelector(".rdystat").textContent=ok?"已準備":"未準備";
+  el.classList.toggle("ok",ok); }
+
+// 兩人到齊,但先別開打:讓雙方看清楚對手是誰、選了什麼造型,按下準備才進倒數
+function onReady(m){
+  gen++; clearTimeout(cdTimer); fxReset(); clearCooldowns();
+  phase="ready"; meReady=false; readyBuf=""; running=false;
+  foeInfo={ name:m.oppName||"對手", skin:skinOf(m.oppSkin).id };
+  input.disabled=true; input.value=""; incantEl.innerHTML="";
+  $("lobby").classList.add("hide"); $("banner").className="banner"; $("countdown").className=""; fxResize();
+  // 先把競技場佈置好,準備畫面後面就是等一下要打的場地
+  setAvatar("you",mySkin); setAvatar("foe",foeInfo.skin);
+  $("foeName").textContent=foeInfo.name; $("connText").textContent="準備中…";
+  $("youCastLabel").textContent="等待雙方準備…"; $("foeCastLabel").textContent="對手待命中…";
+  setOppBar(null); applyState(m.you,m.opp); setState("等待雙方準備");
+  paintRdy("rdyYou",skinOf(mySkin),myName(),false);
+  paintRdy("rdyFoe",skinOf(foeInfo.skin),foeInfo.name,false);
+  $("readyBtn").disabled=false; $("readyBtn").textContent="準備好了";
+  $("readyScreen").classList.remove("hide");
+}
+function onReadyState(m){
+  paintRdy("rdyYou",skinOf(mySkin),myName(),!!m.you);
+  paintRdy("rdyFoe",skinOf(foeInfo.skin),foeInfo.name,!!m.opp);
+  if(m.you){ meReady=true; $("readyBtn").disabled=true; $("readyBtn").textContent="等待對手…"; }
+}
+function sendReady(){ if(phase!=="ready"||meReady) return;
+  meReady=true; $("readyBtn").disabled=true; $("readyBtn").textContent="等待對手…"; send({t:"ready"}); }
+
+function onCountdown(ms){
+  phase="countdown"; $("readyScreen").classList.add("hide"); $("connText").textContent="即將開始";
+  // 從「再來一場」進來時勝負橫幅還開著,而且它疊在倒數上面,一定要先收掉
+  $("banner").className="banner"; $("rematchMsg").textContent=""; fxReset();
+  const el=$("countdown"), g=gen; let n=Math.max(1,Math.round((ms||3000)/1000));
+  el.className="show";
+  const step=()=>{ if(g!==gen||phase!=="countdown"){ el.className=""; return; }
+    el.textContent=n; el.classList.remove("pop"); void el.offsetWidth; el.classList.add("pop");
+    if(--n>0) cdTimer=setTimeout(step,1000); };
+  step();
+}
+
+function onStart(m){ gen++; clearTimeout(cdTimer); phase="playing"; youIdx=m.youIdx; running=true; fxReset();
+  $("readyScreen").classList.add("hide");
+  const cd=$("countdown"); cd.className="show pop"; cd.textContent="開始!";
+  setTimeout(()=>{ if(phase==="playing") cd.className=""; },700);
   $("lobby").classList.add("hide"); $("banner").className="banner"; fxResize();
   $("foeName").textContent=m.oppName||"對手"; $("connText").textContent="⚔ 對戰中"; $("rematchMsg").textContent="";
   setAvatar("you",mySkin); setAvatar("foe",m.oppSkin);
@@ -1129,6 +1225,7 @@ const SOLO = {
   hard:   { tier:"困難", skin:"abyss",   perWord:760,  gap:[1100,1900], react:.70, unlock:{ frost:1, tornado:1, tsunami:2 } },
 };
 let soloDiff="normal";
+const SOLO_COUNTDOWN=3000;   // 要和 server.js 的 COUNTDOWN 一致,兩邊手感才一樣
 
 function createSolo(key){
   const D=SOLO[key]||SOLO.normal, MAXHP=150, TICK=90;
@@ -1142,12 +1239,26 @@ function createSolo(key){
   const emit=o=>{ if(alive) setTimeout(()=>{ if(alive) handle(o); },0); };
   const info=()=>emit({t:"info",text:`${foe.zh} · ${D.tier} · Lv${level}`});
 
-  function begin(){
+  // 和線上一樣分三段:準備 → 倒數 → 開打。ph 控制 tick 什麼時候可以動,
+  // 不然準備畫面還開著 AI 就先讀起咒來了。
+  let ph="ready";
+  function reset(){
     P=[mk(),mk()]; level=1; cast=null; over=false; frozenUntil=0; slowUntil=0; pcd={}; acd={};
     // 玩家剛好選了同一隻的話換一個,不然場上兩隻長得一模一樣還發同色的光
     foe = D.skin===mySkin ? (SKINS.find(s=>s.id!==mySkin)||SKINS[0]) : skinOf(D.skin);
-    nextAt=now()+rnd(D.gap[0],D.gap[1])+900;
-    emit({t:"start",youIdx:0,you:pub(P[0]),opp:pub(P[1]),oppName:foe.zh,oppSkin:foe.id}); info();
+  }
+  function begin(){ reset(); ph="ready";
+    emit({t:"ready",you:pub(P[0]),opp:pub(P[1]),oppName:foe.zh,oppSkin:foe.id});
+    emit({t:"readyState",you:false,opp:true});   // AI 永遠已經準備好了,在等你
+  }
+  function go(){
+    ph="count";
+    emit({t:"readyState",you:true,opp:true});
+    emit({t:"countdown",ms:SOLO_COUNTDOWN});
+    setTimeout(()=>{ if(!alive||ph!=="count") return;
+      ph="play"; nextAt=now()+rnd(D.gap[0],D.gap[1])+900;
+      emit({t:"start",youIdx:0,you:pub(P[0]),opp:pub(P[1]),oppName:foe.zh,oppSkin:foe.id}); info();
+    }, SOLO_COUNTDOWN);
   }
 
   // ---- 裁判:結算規則和 server.js 對齊 ----
@@ -1205,7 +1316,7 @@ function createSolo(key){
     emit({t:"oppCast",spell:name});
   }
   function tick(){
-    if(!alive||over) return;
+    if(!alive||over||ph!=="play") return;
     const t=now();
     if(cast){
       let dt=TICK;
@@ -1230,12 +1341,14 @@ function createSolo(key){
   return {
     send(o){
       if(!alive) return;
-      if(o.t==="castStart"){ if(over) return;
+      if(o.t==="castStart"){ if(over||ph!=="play") return;
         const left=(pcd[o.spell]||0)-now();
         if(left>0){ emit({t:"cdReject",spell:o.spell,ms:left}); return; }
         P[0].casting=o.spell; }
-      else if(o.t==="castComplete"){ if(!over && P[0].casting===o.spell){ P[0].casting=null; resolve(0,o.spell); } }
-      else if(o.t==="rematch"){ begin(); }
+      else if(o.t==="castComplete"){ if(!over && ph==="play" && P[0].casting===o.spell){ P[0].casting=null; resolve(0,o.spell); } }
+      else if(o.t==="ready"){ if(ph==="ready") go(); }
+      // 按下「再來一場」本身就是準備好了,跳過準備畫面直接倒數(和線上同一個規則)
+      else if(o.t==="rematch"){ reset(); go(); }
     },
     close(){ alive=false; clearInterval(timer); },
   };
@@ -1281,8 +1394,9 @@ function renderIncant(){ incantEl.innerHTML=""; if(mode!=="casting") return;
       const c=document.createElement("span"); c.className="cursor"; const r=document.createElement("span"); r.className="r"; r.textContent=w.slice(matched); span.append(g,c,r); }
     else span.textContent=w; incantEl.appendChild(span); }); }
 
-function onGameover(win){ running=false; input.disabled=true; mode="idle"; spell=null; words=[]; wordIndex=0;
-  clearTimeout(frozenTimer); $("frost").classList.remove("show"); incantEl.classList.remove("glitch");
+function onGameover(win){ running=false; phase="over"; input.disabled=true; mode="idle"; spell=null; words=[]; wordIndex=0;
+  clearTimeout(frozenTimer); clearTimeout(cdTimer); $("countdown").className="";
+  $("frost").classList.remove("show"); incantEl.classList.remove("glitch");
   const g=gen, t0=performance.now();
   const show=()=>{ if(g!==gen) return;   // 已經開新局或回大廳,就別再蓋畫面
     $("banner").className="banner show "+(win?"win":"lose"); $("bannerText").textContent=win?"勝利!":"落敗…"; $("rematchMsg").textContent=""; };
@@ -1291,9 +1405,14 @@ function onGameover(win){ running=false; input.disabled=true; mode="idle"; spell
   const wait=()=>{ if(g!==gen) return;
     if(shots.length && performance.now()-t0<1800) requestAnimationFrame(wait); else setTimeout(show,420); };
   wait(); }
-function onOppLeft(){ gen++; running=false; input.disabled=true; clearTimeout(frozenTimer); $("frost").classList.remove("show"); $("banner").className="banner show win"; $("bannerText").textContent="對手離開了"; $("rematchMsg").textContent=""; $("rematchBtn").style.display="none"; }
-function backToLobby(){ gen++; closeNet(); solo=false; running=false; input.disabled=true; mode="idle"; spell=null; words=[]; wordIndex=0;
-  clearTimeout(frozenTimer); fxReset(); clearCooldowns(); setOppBar(null); $("frost").classList.remove("show"); incantEl.classList.remove("glitch"); incantEl.innerHTML=""; input.value="";
+function onOppLeft(){ gen++; running=false; phase="over"; input.disabled=true;
+  clearTimeout(frozenTimer); clearTimeout(cdTimer); $("countdown").className=""; $("readyScreen").classList.add("hide");
+  $("frost").classList.remove("show"); $("banner").className="banner show win"; $("bannerText").textContent="對手離開了"; $("rematchMsg").textContent=""; $("rematchBtn").style.display="none"; }
+function backToLobby(){ gen++; closeNet(); solo=false; running=false; phase="idle"; meReady=false; readyBuf="";
+  input.disabled=true; mode="idle"; spell=null; words=[]; wordIndex=0;
+  clearTimeout(frozenTimer); clearTimeout(cdTimer); fxReset(); clearCooldowns(); setOppBar(null);
+  $("countdown").className=""; $("readyScreen").classList.add("hide");
+  $("frost").classList.remove("show"); incantEl.classList.remove("glitch"); incantEl.innerHTML=""; input.value="";
   $("banner").className="banner"; $("lobby").classList.remove("hide"); $("lobbyMsg").textContent=""; $("rematchBtn").style.display=""; }
 
 $("quickBtn").addEventListener("click",()=>{ $("lobbyMsg").textContent="連線中…"; connect(""); });
@@ -1307,7 +1426,18 @@ $("skinRow").addEventListener("click",e=>{ const b=e.target.closest("button[data
 $("rematchBtn").addEventListener("click",()=>{ if(net){ send({t:"rematch"}); if(!solo) $("rematchMsg").textContent="等待對手同意…"; } });
 $("backBtn").addEventListener("click",backToLobby);
 $("leaveBtn").addEventListener("click",backToLobby);
-document.addEventListener("keydown",()=>{ if(running && !input.disabled && document.activeElement!==input) input.focus(); });
+$("readyBtn").addEventListener("click",sendReady);
+// 準備畫面上直接打 ready 也算數 —— 這是打字遊戲,用打的比用點的順手
+document.addEventListener("keydown",e=>{
+  if(phase==="ready" && !meReady){
+    if(e.key.length===1 && /[a-z]/i.test(e.key)){
+      readyBuf=(readyBuf+e.key.toLowerCase()).slice(-5);
+      if(readyBuf==="ready") sendReady();
+    }
+    return;
+  }
+  if(running && !input.disabled && document.activeElement!==input) input.focus();
+});
 
 renderSpellbook(); renderLobbySpells(); renderSkins();
 setAvatar("you",mySkin); setAvatar("foe","count");

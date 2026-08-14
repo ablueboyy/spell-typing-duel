@@ -30,6 +30,9 @@ const skinOf = (s) => (SKINS.has(s) ? s : "astral");
 const MAXHP = 150;
 // 中一次冰凍後的免疫時間。沒有這個,手速越快的人越會被無限凍結鎖死。
 const FREEZE_IMMUNE = 10000;
+// 雙方都按下準備之後的倒數。房間要等倒數結束才會 started,
+// 否則改過的客戶端可以在倒數期間就開始丟咒語。
+const COUNTDOWN = 3000;
 
 // ---- 房間管理 ----
 const rooms = new Map();   // code -> room
@@ -47,21 +50,43 @@ function broadcast(r, obj) { r.players.forEach(p => send(p.ws, obj)); }
 function broadcastState(r) {
   r.players.forEach((p, i) => send(p.ws, { t: "state", you: pub(p), opp: pub(r.players[1 - i]) }));
 }
+function bothPresent(r) {
+  return r.players.length === 2 && r.players.every(p => p.ws && p.ws.readyState === 1);
+}
+// 兩人到齊 → 先進準備畫面,不直接開打。這樣至少看得到對手是誰、選了什麼造型。
+function toReady(r) {
+  r.phase = "ready"; r.started = false;
+  r.players.forEach(p => { p.ready = false; p.casting = null; });
+  r.players.forEach((p, i) => {
+    const opp = r.players[1 - i];
+    send(p.ws, { t: "ready", you: pub(p), opp: pub(opp), oppName: opp.name, oppSkin: opp.skin });
+  });
+}
+function beginCountdown(r) {
+  if (!bothPresent(r)) return;
+  r.phase = "countdown";
+  clearTimeout(r.cdTimer);
+  broadcast(r, { t: "countdown", ms: COUNTDOWN });
+  // 倒數期間有人跑掉的話就別開場了(close 會清掉這個 timer,這裡再擋一次)
+  r.cdTimer = setTimeout(() => { r.cdTimer = null; if (bothPresent(r)) startRoom(r); }, COUNTDOWN);
+}
 function startRoom(r) {
-  r.started = true;
+  r.started = true; r.phase = "playing";
   r.players.forEach((p, i) => {
     const opp = r.players[1 - i];
     send(p.ws, { t: "start", youIdx: i, you: pub(p), opp: pub(opp), oppName: opp.name, oppSkin: opp.skin });
   });
 }
 function endRoom(r, deadIdx) {
-  r.started = false;
+  r.started = false; r.phase = "over";
+  clearTimeout(r.cdTimer); r.cdTimer = null;
   // 房間保留(房號不釋放),兩人都還連著就能直接再來一場;真正的清除在 close 事件
   r.players.forEach(p => { p.rematch = false; p.casting = null; });
   r.players.forEach((p, i) => send(p.ws, { t: "gameover", win: i !== deadIdx }));
 }
 function closeRoom(r) {
-  r.started = false;
+  r.started = false; r.phase = "dead";
+  clearTimeout(r.cdTimer); r.cdTimer = null;
   r.players.forEach(p => { if (p.ws) p.ws._room = null; });
   if (r.code) rooms.delete(r.code);
 }
@@ -80,7 +105,7 @@ wss.on("connection", (ws) => {
         // 用房號和朋友對戰
         let r = rooms.get(code);
         if (!r) {
-          r = { code, players: [], started: false };
+          r = { code, players: [], started: false, phase: "waiting", cdTimer: null };
           rooms.set(code, r);
           r.players.push(initPlayer(ws, ws._name));
           ws._room = r; ws._idx = 0;
@@ -88,20 +113,20 @@ wss.on("connection", (ws) => {
         } else if (r.players.length === 1) {
           r.players.push(initPlayer(ws, ws._name));
           ws._room = r; ws._idx = 1;
-          startRoom(r);
+          toReady(r);
         } else {
           send(ws, { t: "roomFull" });
         }
       } else {
         // 快速配對
         if (quickWaiting && quickWaiting.readyState === 1 && quickWaiting !== ws) {
-          const r = { code: null, players: [], started: false };
+          const r = { code: null, players: [], started: false, phase: "waiting", cdTimer: null };
           r.players.push(initPlayer(quickWaiting, quickWaiting._name));
           quickWaiting._room = r; quickWaiting._idx = 0;
           r.players.push(initPlayer(ws, ws._name));
           ws._room = r; ws._idx = 1;
           quickWaiting = null;
-          startRoom(r);
+          toReady(r);
         } else {
           quickWaiting = ws;
           send(ws, { t: "waiting" });
@@ -116,14 +141,24 @@ wss.on("connection", (ws) => {
     const opp = r.players[1 - ws._idx];
     if (!me || !opp) return;
 
+    // 準備:兩人到齊後、開打之前的階段。兩邊都按下才進倒數。
+    if (msg.t === "ready") {
+      if (r.phase !== "ready") return;
+      me.ready = true;
+      r.players.forEach((p, i) => send(p.ws, { t: "readyState", you: p.ready, opp: r.players[1 - i].ready }));
+      if (r.players.every(p => p.ready)) beginCountdown(r);
+      return;
+    }
+
     // 再來一場:只在「分出勝負後」處理,所以必須擺在 started 檢查之前
     if (msg.t === "rematch") {
-      if (r.started) return;
+      if (r.phase !== "over") return;
       if (!opp.ws || opp.ws.readyState !== 1) { send(ws, { t: "oppLeft" }); return; }
       me.rematch = true;
       if (r.players.every(p => p.rematch)) {
         r.players.forEach(p => { p.hp = MAXHP; p.shield = 0; p.reflect = false; p.casting = null; p.rematch = false; p.freezeImmUntil = 0; p.cds = {}; });
-        startRoom(r);
+        // 兩邊都按過「再來一場」,等於已經準備好了,直接進倒數不用再 ready 一次
+        beginCountdown(r);
       } else {
         send(opp.ws, { t: "oppWantsRematch" });
       }
