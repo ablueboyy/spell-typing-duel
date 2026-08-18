@@ -558,7 +558,7 @@
       <div class="lrules">
         <span><b>1</b>打咒語名字啟動</span>
         <span><b>2</b>把跳出來的咒文一段段打完</span>
-        <span><b>3</b>對手讀咒時丟 silence 打斷他</span>
+        <span><b>3</b>對手讀長咒時丟 silence 打斷他</span>
       </div>
       <div class="lspells" id="lobbySpells"></div>
     </div>
@@ -612,7 +612,7 @@ const SPELLS = [
   { name:"tornado", zh:"龍捲風", type:"attack",    count:3, bucket:"mid",   power:22, cd:7000,  kind:"混亂", cls:"k-tornado",  scramble:3000 },
   { name:"tsunami", zh:"海嘯",   type:"attack",    count:4, bucket:"long",  power:44, cd:12000, kind:"重擊", cls:"k-tsunami" },
   { name:"heal",    zh:"治療",   type:"heal",      count:3, bucket:"mid",   power:40, cd:18000, kind:"補血", cls:"k-heal"    },
-  { name:"silence", zh:"沉默",   type:"interrupt", count:2, bucket:"short", power:0,  cd:5000,  kind:"打斷", cls:"k-interrupt" },
+  { name:"silence", zh:"沉默",   type:"interrupt", count:3, bucket:"short", power:0,  cd:9000,  kind:"打斷", cls:"k-interrupt" },
 ];
 const FREEZE_IMMUNE = 10000;   // 中一次冰凍後的免疫時間(要和 server.js 一致)
 const SPELL_MAP = Object.fromEntries(SPELLS.map(s => [s.name, s]));
@@ -1077,7 +1077,7 @@ function handle(m){ switch(m.t){
   case "oppCast": onOppCast(m.spell); break;
   case "oppProgress": onOppProgress(m.index); break;
   case "resolve": onResolve(m); break;
-  case "interrupted": onInterrupted(); break;
+  case "interrupted": onInterrupted(m.spell); break;
   case "frozen": onFrozen(m.ms); break;
   case "scrambled": onScrambled(m.ms); break;
   case "cooldown": startCooldown(m.spell,m.ms); break;
@@ -1192,7 +1192,7 @@ function onResolve(m){
       $("youCastLabel").innerHTML=`命中 <b>${m.dmg}</b> 傷害${extra}!連擊 x${combo}`; }
   } else if(m.effect==="heal"){ fxHeal(casterW); floaty(casterW,`+${m.value}❤`,"#39ff9e"); if(iAmCaster) $("youCastLabel").innerHTML=`恢復 <b>${m.value}</b> 點生命`;
   } else if(m.effect==="interrupt"){
-    if(m.hit){ fxShot(casterW,oppW,SPELL_FX.silence,()=>{ fxImpactCfg(oppW,SPELL_FX.silence.imp); floaty(oppW,"打斷!","#ffa94d"); if(oppOfCaster===youIdx) onInterrupted(); else clearOppCast(); }); if(iAmCaster) $("youCastLabel").innerHTML="成功打斷對手!"; }
+    if(m.hit){ fxShot(casterW,oppW,SPELL_FX.silence,()=>{ fxImpactCfg(oppW,SPELL_FX.silence.imp); floaty(oppW,"打斷!","#ffa94d"); if(oppOfCaster===youIdx) onInterrupted(m.broke); else clearOppCast(); }); if(iAmCaster) $("youCastLabel").innerHTML="成功打斷對手!"; }
     else if(iAmCaster) $("youCastLabel").innerHTML="對手沒在讀咒,打斷落空…";
   }
   updateWpm();
@@ -1205,7 +1205,11 @@ function onCdReject(m){ startCooldown(m.spell,m.ms);
     mode="idle"; spell=null; words=[]; wordIndex=0; errFlag=false; input.value=""; incantEl.innerHTML=""; fxEndCast("you");
     setState("待命 · 打出咒語名字"); } }
 
-function onInterrupted(){ if(mode==="casting"){ mode="idle"; spell=null; words=[]; wordIndex=0; errFlag=false; input.value=""; incantEl.innerHTML=""; fxEndCast("you"); setState("待命 · 打出咒語名字"); $("youCastLabel").innerHTML="<b style='color:var(--bad)'>你的施法被打斷了!</b>"; input.classList.add("err"); setTimeout(()=>input.classList.remove("err"),300); } }
+// 被打斷的那一招會直接進冷卻(伺服器隨後會補一則 cooldown),所以標籤要講清楚是哪一招被鎖住了
+function onInterrupted(name){ if(mode==="casting"){ const broken=SPELL_MAP[name||(spell&&spell.name)];
+    mode="idle"; spell=null; words=[]; wordIndex=0; errFlag=false; input.value=""; incantEl.innerHTML=""; fxEndCast("you"); setState("待命 · 打出咒語名字");
+    $("youCastLabel").innerHTML="<b style='color:var(--bad)'>你的施法被打斷了!</b>"+(broken?`<span style="opacity:.75"> ${broken.zh} 進入冷卻</span>`:"");
+    input.classList.add("err"); setTimeout(()=>input.classList.remove("err"),300); } }
 
 function onFrozen(ms){ input.disabled=true; input.blur(); $("frost").classList.add("show"); setState("❄ 你被冰凍了!");
   clearTimeout(frozenTimer); frozenTimer=later(()=>{ $("frost").classList.remove("show"); if(running){ input.disabled=false; input.focus(); setState(mode==="casting"?"吟唱中":"待命 · 打出咒語名字"); } }, ms); }
@@ -1286,10 +1290,14 @@ function createSolo(key){
     }
     else if(sp.type==="heal"){ const b=me.hp; me.hp=Math.min(me.max,me.hp+sp.power); ev.value=me.hp-b; }
     else if(sp.type==="interrupt"){
-      const busy = ci===0 ? !!cast : !!P[0].casting;
-      if(busy){ ev.hit=true; ev.target=1-ci;
-        if(ci===0){ cast=null; P[1].casting=null; nextAt=now()+1400; }
-        else { P[0].casting=null; emit({t:"interrupted"}); }
+      // 被打斷的那一招要進冷卻(和 server.js 一致),不然被打斷後可以馬上重讀同一招
+      const broken = ci===0 ? (cast&&cast.name) : P[0].casting;
+      if(broken){ ev.hit=true; ev.target=1-ci; ev.broke=broken;
+        const bcd = SPELL_MAP[broken] && SPELL_MAP[broken].cd;
+        if(ci===0){ cast=null; P[1].casting=null; nextAt=now()+1400;
+          if(bcd) acd[broken]=now()+bcd; }
+        else { P[0].casting=null; emit({t:"interrupted",spell:broken});
+          if(bcd) emit({t:"cooldown",spell:broken,ms:bcd}); }
       } else ev.hit=false;
     }
     emit(ev); emit({t:"state",you:pub(P[0]),opp:pub(P[1])});
@@ -1300,7 +1308,10 @@ function createSolo(key){
   // 回傳要施放的咒;全部都在冷卻中就回 null,下一個 tick 再挑
   function aiPick(){
     const u=D.unlock, ready=n=>now()>=(acd[n]||0);
-    if(P[0].casting && ready("silence") && Math.random()<D.react) return "silence";   // 抓你讀咒的空檔打斷
+    // 抓你讀咒的空檔打斷。silence 自己也要打三段,對短咒根本追不上,
+    // 只挑三段以上的長咒下手,才不會每次都撲空又白吃 9 秒冷卻
+    const yourCast=SPELL_MAP[P[0].casting];
+    if(yourCast && yourCast.count>=3 && ready("silence") && Math.random()<D.react) return "silence";
     if(P[1].hp<MAXHP*.5 && ready("heal") && Math.random()<.5) return "heal";   // 血量上限改過,門檻用比例才不會失效
     const r=Math.random();
     // 你還在冰凍免疫中的話,AI 不會浪費 frost

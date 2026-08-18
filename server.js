@@ -13,7 +13,8 @@ const wss = new WebSocketServer({ server });
 
 // ---- 咒語效果表(名稱必須和前端一致)----
 // 攻擊咒可以附帶 freeze(凍住對手輸入)或 scramble(打亂對手咒文)
-// cd = 施放成功後的冷卻(毫秒)。讀咒被打斷不算施放,所以不會進冷卻。
+// cd = 施放成功後的冷卻(毫秒)。被 silence 打斷的那一招也照樣進冷卻,
+// 不然被打斷的人可以立刻原地再讀一次同一招,silence 等於白放。
 // spark 的冷卻刻意壓很短:任何時候都要有招可以出,不然六招全冷卻只能乾等。
 const SPELLS = {
   spark:    { type: "attack",    power: 11, cd: 1500  },
@@ -21,7 +22,7 @@ const SPELLS = {
   tornado:  { type: "attack",    power: 22, scramble: 3000, cd: 7000  },
   tsunami:  { type: "attack",    power: 44, cd: 12000 },
   heal:     { type: "heal",      power: 40, cd: 18000 },
-  silence:  { type: "interrupt", power: 0,  cd: 5000  },
+  silence:  { type: "interrupt", power: 0,  cd: 9000  },
 };
 const has = (name) => Object.prototype.hasOwnProperty.call(SPELLS, name);
 // 造型 id 白名單。前端拿到後會用它去組 SVG 的 href,所以不能讓任意字串轉發出去。
@@ -183,7 +184,6 @@ wss.on("connection", (ws) => {
       const sp = SPELLS[msg.spell];
       if (!me.casting || me.casting.spell !== msg.spell) return; // 必須先 castStart
       me.casting = null;
-      // 冷卻從「施放成功」起算;被 silence 打斷的話不會走到這裡,所以不進冷卻。
       if (sp.cd) { me.cds[msg.spell] = Date.now() + sp.cd; send(ws, { t: "cooldown", spell: msg.spell, ms: sp.cd }); }
 
       const ev = { t: "resolve", caster: ws._idx, spell: msg.spell, effect: sp.type };
@@ -213,7 +213,15 @@ wss.on("connection", (ws) => {
         ev.value = me.hp - before;
       }
       else if (sp.type === "interrupt") {
-        if (opp.casting) { opp.casting = null; ev.hit = true; ev.target = 1 - ws._idx; send(opp.ws, { t: "interrupted" }); }
+        if (opp.casting) {
+          // 被打斷的那一招要進冷卻,不然對手可以馬上重讀同一招,打斷就沒有意義
+          const broken = opp.casting.spell;
+          opp.casting = null;
+          ev.hit = true; ev.target = 1 - ws._idx; ev.broke = broken;
+          send(opp.ws, { t: "interrupted", spell: broken });
+          const bcd = SPELLS[broken] && SPELLS[broken].cd;
+          if (bcd) { opp.cds[broken] = Date.now() + bcd; send(opp.ws, { t: "cooldown", spell: broken, ms: bcd }); }
+        }
         else ev.hit = false;
       }
 
